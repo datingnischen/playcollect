@@ -31,9 +31,11 @@ const pool = new Pool({
 const SHOW_CATALOG_IMAGES = String(process.env.PLAYCOLLECT_SHOW_CATALOG_IMAGES || '1') !== '0';
 const CATALOG_PAGE_SIZE = 500;
 const SESSION_COOKIE_NAME = 'playcollect_session';
+const PREVIEW_GATE_COOKIE_NAME = 'playcollect_preview_gate';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_ATTEMPT_MAX = 5;
+const PREVIEW_GATE_PASSWORD = String(process.env.PLAYCOLLECT_PREVIEW_PASSWORD || 'mogge1982');
 const INVENTORY_IMPORT_SCRIPT = '/root/playcollect-db/import_inventory_xlsx_to_collection.py';
 const INVENTORY_IMPORT_PYTHON = '/root/.hermes/google-venv/bin/python';
 const INVENTORY_IMPORT_ADMIN_EMAILS = new Set(
@@ -107,6 +109,37 @@ function clearSessionCookie(req) {
   ];
   if (isSecureRequest(req)) parts.push('Secure');
   return parts.join('; ');
+}
+
+function createPreviewGateCookie(req) {
+  const token = crypto.createHash('sha256').update(`${PREVIEW_GATE_PASSWORD}:preview-ok`).digest('hex');
+  const parts = [
+    `${PREVIEW_GATE_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+  ];
+  if (isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function clearPreviewGateCookie(req) {
+  const parts = [
+    `${PREVIEW_GATE_COOKIE_NAME}=`,
+    'Path=/',
+    'Max-Age=0',
+    'HttpOnly',
+    'SameSite=Lax',
+  ];
+  if (isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function hasPreviewGateAccess(req) {
+  const token = req.cookies?.[PREVIEW_GATE_COOKIE_NAME];
+  if (!token) return false;
+  const expected = crypto.createHash('sha256').update(`${PREVIEW_GATE_PASSWORD}:preview-ok`).digest('hex');
+  return token === expected;
 }
 
 function hashSessionToken(token) {
@@ -257,6 +290,46 @@ async function loadCurrentUser(req, res, next) {
 }
 
 app.use(loadCurrentUser);
+
+app.get('/zugang', (req, res) => {
+  if (hasPreviewGateAccess(req)) {
+    res.redirect(sanitizeNextPath(req.query.next, '/'));
+    return;
+  }
+  res.send(renderPreviewGatePage({ nextPath: sanitizeNextPath(req.query.next, '/'), error: req.query.error || '' }));
+});
+
+app.post('/zugang', (req, res) => {
+  const nextPath = sanitizeNextPath(req.body.next, '/');
+  const password = String(req.body.password || '');
+  if (password !== PREVIEW_GATE_PASSWORD) {
+    appendSetCookie(res, clearPreviewGateCookie(req));
+    res.redirect(`/zugang?next=${encodeURIComponent(nextPath)}&error=${encodeURIComponent('Zugang fehlgeschlagen. Bitte Passwort prüfen.')}`);
+    return;
+  }
+  appendSetCookie(res, createPreviewGateCookie(req));
+  res.redirect(nextPath);
+});
+
+app.use((req, res, next) => {
+  const requestPath = String(req.path || '/');
+  if (!PREVIEW_GATE_PASSWORD) return next();
+  if (requestPath === '/zugang') return next();
+  if (requestPath.startsWith('/static/')) return next();
+  if (requestPath.startsWith('/.well-known/')) return next();
+  if (hasPreviewGateAccess(req)) return next();
+
+  const nextPath = sanitizeNextPath(req.originalUrl || req.url || '/', '/');
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    res.redirect(`/zugang?next=${encodeURIComponent(nextPath)}`);
+    return;
+  }
+
+  res.status(403).send(renderPreviewGatePage({
+    nextPath,
+    error: 'Bitte Oberfläche zuerst über den Testzugang freischalten.',
+  }));
+});
 
 function layout({ title, body, metaDescription = '', currentUser = null }) {
   const safeDescription = String(metaDescription || '').trim();
@@ -565,6 +638,54 @@ function sanitizeNextPath(rawValue, fallback = '/konto') {
   const value = String(rawValue || '').trim();
   if (!value.startsWith('/') || value.startsWith('//')) return fallback;
   return value;
+}
+
+function renderPreviewGatePage({ nextPath = '/', error = '' }) {
+  const safeError = error ? `<div class="form-alert form-error">${esc(error)}</div>` : '';
+  return `<!DOCTYPE html>
+  <html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Playcollect – Testzugang</title>
+    <meta name="description" content="Geschützter Testzugang für Playcollect.">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main>
+      <section class="profile-hero">
+        <div class="container profile-grid auth-grid" style="max-width:960px; padding-top:40px;">
+          <aside class="profile-card glass-card">
+            <div class="profile-cover"></div>
+            <div class="profile-header">
+              <div class="profile-summary">
+                <div class="profile-avatar">PC</div>
+                <div>
+                  <span class="eyebrow">Testbetrieb</span>
+                  <h1 style="margin:12px 0 6px; font-size:34px; letter-spacing:-.03em;">Playcollect kurz freischalten</h1>
+                  <p class="muted" style="margin:0">Die Oberfläche ist im Moment mit einem einfachen Session-Schutz versehen. Nach der Eingabe bist du in diesem Browser nur einmal freigeschaltet.</p>
+                </div>
+              </div>
+            </div>
+            <p class="profile-bio">Der Schutz ist bewusst schlank gehalten und eignet sich für den aktuellen Testbetrieb, bis die Plattform regulär offen oder feiner abgesichert werden soll.</p>
+          </aside>
+          <div class="panel glass-card form-panel">
+            ${safeError}
+            <form class="register-form" method="post" action="/zugang">
+              <input type="hidden" name="next" value="${esc(nextPath)}">
+              <label>
+                <span>Passwort</span>
+                <input name="password" type="password" required placeholder="Testzugang eingeben" autofocus>
+              </label>
+              <button class="button button-primary" type="submit">Zugang öffnen</button>
+            </form>
+            <p class="muted" style="margin:16px 0 0;">Die Freischaltung wird nur für die aktuelle Browser-Session gespeichert.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+  </html>`;
 }
 
 function collectionTypeLabel(type) {
