@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playcollect – Suchseite Mockup</title>
+  <meta name="description" content="Playcollect Suchseiten-Mockup mit Filterlogik für Themenwelt, Jahr, Zustand und Sammlerrelevanz.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">
+        <img class="brand-logo" src="assets/logo-playcollect.svg" alt="Playcollect Logo">
+        <span>Playcollect<small>Suche, Katalog, Sammlerwissen</small></span>
+      </a>
+      <nav class="nav" aria-label="Hauptnavigation">
+        <a href="index.html">Start</a>
+        <a class="active" href="search.html">Katalog & Suche</a>
+        <a href="collector.html">Sammlerprofil</a>
+        <a href="set.html">Setdetail</a>
+      </nav>
+      <div class="header-actions">
+        <a class="button button-secondary" href="collector.html">Wunschliste</a>
+        <a class="button button-primary" href="set.html">Set öffnen</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="search-hero">
+      <div class="container">
+        <span class="eyebrow">Suchseiten-Idee</span>
+        <div class="search-head">
+          <div>
+            <h1 style="font-size:56px; line-height:1; margin:16px 0 12px; letter-spacing:-.04em">Suche nach Sets, Themenwelten, Jahren und Sammlerstatus.</h1>
+            <p class="muted" style="font-size:18px; max-width:860px; line-height:1.7">Die Suchseite soll sich nicht wie ein trockener Produktkatalog anfühlen, sondern wie ein professionelles Sammler-Tool: links starke Filter, rechts klare Ergebnisse mit Setinfos, Sammlungsbezug und Marktplatzsignalen.</p>
+          </div>
+          <div class="preview-note">2.184 Treffer · 184 Vintage · 67 auf Wunschliste</div>
+        </div>
+        <div class="search-toolbar">
+          <div class="filter-box search-shell"><span>🔎</span><input value="Pirat" aria-label="Suche nach Setnummer oder Suchbegriff"></div>
+          <div class="filter-box"><input class="filter-input" value="Themenwelt: Piraten" aria-label="Themenwelt"></div>
+          <div class="filter-box"><input class="filter-input" value="Jahre: 1985 – 1998" aria-label="Jahr"></div>
+          <div class="filter-box"><input class="filter-input" value="Sortierung: Beliebtheit" aria-label="Sortierung"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:10px">
+      <div class="container results-layout">
+        <aside class="filter-panel glass-card">
+          <span class="kicker">Filter</span>
+          <h3 style="margin:10px 0 8px; font-size:28px;">Sammlungsrelevanz zuerst</h3>
+          <p class="muted">Die Filter sollen Sammlerfragen lösen: Welche Sets fehlen mir? Welche gibt es gerade zu kaufen? Welche gehören zur gleichen Welle?</p>
+          <div class="filter-stack">
+            <div class="filter-group">
+              <label>Themenwelt</label>
+              <div class="filter-box check-grid">
+                <span>Piraten <em>412</em></span>
+                <span>Ritter <em>388</em></span>
+                <span>Western <em>196</em></span>
+                <span>City Life <em>274</em></span>
+              </div>
+            </div>
+            <div class="filter-group">
+              <label>Zustand / Listing</label>
+              <div class="filter-box check-grid">
+                <span>Aktuell im Marktplatz <em>126</em></span>
+                <span>Komplett mit OVP <em>38</em></span>
+                <span>Nur Set im Katalog <em>2.058</em></span>
+              </div>
+            </div>
+            <div class="filter-group">
+              <label>Sammlungsstatus</label>
+              <div class="filter-box check-grid">
+                <span>Bereits in meiner Sammlung <em>54</em></span>
+                <span>Auf meiner Wunschliste <em>19</em></span>
+                <span>Fehlende Sets einer Reihe <em>12</em></span>
+              </div>
+            </div>
+            <div class="filter-group">
+              <label>Jahrgang</label>
+              <div class="filter-box check-grid">
+                <span>1980–1989 <em>240</em></span>
+                <span>1990–1999 <em>530</em></span>
+                <span>2000–2009 <em>468</em></span>
+              </div>
+            </div>
+            <a class="button button-primary" href="#results">Filter anwenden</a>
+          </div>
+        </aside>
+
+        <div id="results">
+          <div class="section-header" style="margin-bottom:16px;">
+            <div>
+              <span class="eyebrow">Trefferbild</span>
+              <h2>Beispiel-Ergebnisse für „Pirat“</h2>
+            </div>
+            <div class="status-row">
+              <span class="status-blue">Setinformationen</span>
+              <span class="status-orange">Sammlerstatus</span>
+              <span class="status-green">Marktplatz</span>
+            </div>
+          </div>
+          <div class="results-grid">
+            <article class="result-card glass-card">
+              <div class="topline"><span>Set 3940</span><span class="price">ab 89 €</span></div>
+              <img src="assets/set-pirate.svg" alt="Piratenschiff Ergebnis-Karte">
+              <h3>Piratenschiff</h3>
+              <p>Klassiker aus den 90ern. Viele Sammler achten hier besonders auf Segel, Flaggen und Vollständigkeit der Figuren.</p>
+              <div class="status-row"><span class="status-blue">1991 · Piraten</span><span class="status-orange">Fehlt in deiner Reihe</span><span class="status-green">24 Angebote live</span></div>
+            </article>
+            <article class="result-card glass-card">
+              <div class="topline"><span>Set 3827</span><span class="price">ab 42 €</span></div>
+              <img src="assets/set-castle.svg" alt="Piratenfort Ergebnis-Karte">
+              <h3>Piratenfort</h3>
+              <p>Stärker magaziniger / katalogiger Treffer mit Varianten- und Zubehör-Hinweis sowie direktem Sammlungsbezug.</p>
+              <div class="status-row"><span class="status-blue">1989 · Küste</span><span class="status-orange">Auf Wunschliste</span><span class="status-green">8 Angebote</span></div>
+            </article>
+            <article class="result-card glass-card">
+              <div class="topline"><span>Set 4290</span><span class="price">ab 24 €</span></div>
+              <img src="assets/set-farm.svg" alt="Pirateninsel Ergebnis-Karte">
+              <h3>Pirateninsel</h3>
+              <p>Ein Beispiel dafür, wie Bilder, Preisanker und Community-Signale gemeinsam den Suchtreffer stärker machen.</p>
+              <div class="status-row"><span class="status-blue">1994 · Abenteuer</span><span class="status-orange">Bereits gesammelt</span><span class="status-green">3 neue Verkäufer</span></div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-panel">
+      <div><strong>Playcollect Suchseite</strong><p class="muted">Mockup mit Fokus auf Sammlerfilter, Set-Kontext und Listings.</p></div>
+      <a class="button button-secondary" href="collector.html">Weiter zum Sammlerprofil</a>
+    </div>
+  </footer>
+</body>
+</html>

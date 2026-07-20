@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playcollect – Sammlerprofil Mockup</title>
+  <meta name="description" content="Sammlerprofil-Mockup für Playcollect mit Profilkarte, Sammlungsfortschritt, Wunschliste und Marktplatzsignalen.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">
+        <img class="brand-logo" src="assets/logo-playcollect.svg" alt="Playcollect Logo">
+        <span>Playcollect<small>Sammlerprofil & Community</small></span>
+      </a>
+      <nav class="nav" aria-label="Hauptnavigation">
+        <a href="index.html">Start</a>
+        <a href="search.html">Katalog & Suche</a>
+        <a class="active" href="collector.html">Sammlerprofil</a>
+        <a href="set.html">Setdetail</a>
+      </nav>
+      <div class="header-actions">
+        <a class="button button-secondary" href="search.html">Sets durchsuchen</a>
+        <a class="button button-primary" href="set.html">Angebot ansehen</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="profile-hero">
+      <div class="container profile-grid">
+        <aside class="profile-card glass-card">
+          <div class="profile-cover"></div>
+          <div class="profile-header">
+            <div class="profile-summary">
+              <div class="profile-avatar">MK</div>
+              <div>
+                <span class="eyebrow">Sammlerprofil</span>
+                <h1 style="margin:12px 0 6px; font-size:34px; letter-spacing:-.03em;">Martin K. · Vintage-Fokus</h1>
+                <p class="muted" style="margin:0">Mitglied seit 2018 · Köln · Ritter / Hafen / Piraten</p>
+              </div>
+            </div>
+            <span class="status-row"><span class="status-green">Verifizierter Verkäufer</span></span>
+          </div>
+          <p class="profile-bio">Martin sammelt vor allem 80er- und 90er-Sets, legt Wert auf Vollständigkeit und dokumentiert Varianten, Inlays und Zubehör. Das Profil soll Vertrauen und Persönlichkeit transportieren – ohne social-media-mäßig zu wirken.</p>
+          <div class="inline-stats">
+            <span>486 Sets</span>
+            <span>98 Wunschlisten-Einträge</span>
+            <span>42 Verkäufe</span>
+            <span>Ø 5,0 Sterne</span>
+          </div>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#collection">Sammlung ansehen</a>
+            <a class="button button-secondary" href="#market">Angebote sehen</a>
+          </div>
+        </aside>
+
+        <div class="dashboard-grid">
+          <article class="panel glass-card">
+            <span class="kicker">Profilkarte / Fortschritt</span>
+            <h3>So fühlt sich eine ernsthafte Sammlung an</h3>
+            <p>Die Profilseite soll nicht nach Social-Profil aussehen, sondern nach hochwertigem Sammler-Dashboard: ordentlich, vertrauenswürdig, motivierend.</p>
+            <div class="progress-list" style="margin-top:18px;">
+              <div class="progress-item">
+                <strong>Ritterwelt vollständig</strong>
+                <div class="progress-bar"><i style="width:82%"></i></div>
+              </div>
+              <div class="progress-item">
+                <strong>Piratenreihe vollständig</strong>
+                <div class="progress-bar"><i style="width:64%"></i></div>
+              </div>
+              <div class="progress-item">
+                <strong>Hafen / Küstenwelt vollständig</strong>
+                <div class="progress-bar"><i style="width:53%"></i></div>
+              </div>
+            </div>
+          </article>
+          <article class="panel glass-card">
+            <span class="kicker">Sammlerstatus</span>
+            <h3>Was andere sofort sehen</h3>
+            <div class="inline-stats" style="margin-top:16px;">
+              <span>12 gesuchte Raritäten</span>
+              <span>8 Dubletten verkaufbar</span>
+              <span>17 Beobachtungen</span>
+              <span>3 neue Nachrichten</span>
+            </div>
+            <p class="profile-bio">So entsteht Community-Wert: Man sieht schnell, wie spezialisiert jemand sammelt, ob er aktiv handelt und welche Themenwelten ihn ausmachen.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="collection">
+      <div class="container section-header">
+        <div>
+          <span class="eyebrow">Sammlung</span>
+          <h2>Beispiel für die persönliche Sammlung</h2>
+        </div>
+        <p>Die Sammlung ist kein bloßer Merker. Sie zeigt Fortschritt, Fokus, Vollständigkeit und motiviert dazu, fehlende Sets gezielt zu suchen.</p>
+      </div>
+      <div class="container collection-grid">
+        <article class="listing-card glass-card">
+          <img src="assets/set-castle.svg" alt="Ritterburg in Sammlung">
+          <h3>Ritterburg 3450</h3>
+          <p>Komplett mit OVP · Zustand: sehr gut · letzte Prüfung vor 3 Monaten</p>
+          <div class="status-row"><span class="status-green">In Sammlung</span><span class="status-blue">Ritterwelt</span></div>
+        </article>
+        <article class="listing-card glass-card">
+          <img src="assets/set-pirate.svg" alt="Piratenschiff in Sammlung">
+          <h3>Piratenschiff 3940</h3>
+          <p>Komplett ohne Karton · zwei Segel nachgekauft · Zubehör dokumentiert</p>
+          <div class="status-row"><span class="status-green">In Sammlung</span><span class="status-orange">Variante notiert</span></div>
+        </article>
+        <article class="listing-card glass-card">
+          <img src="assets/set-farm.svg" alt="Bauernhof in Sammlung">
+          <h3>Bauernhof 3716</h3>
+          <p>Familienklassiker · gebraucht gekauft · nur 1 Zubehörteil fehlt</p>
+          <div class="status-row"><span class="status-blue">Fast komplett</span><span class="status-orange">1 Teil fehlt</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container section-header">
+        <div>
+          <span class="eyebrow">Wunschliste</span>
+          <h2>Was noch fehlt – sofort sichtbar</h2>
+        </div>
+        <p>Genau hier wird der Katalog später zum Conversion-Treiber für den Marktplatz: Wunschliste und fehlende Sets führen direkt zu passenden Angeboten.</p>
+      </div>
+      <div class="container wishlist-grid">
+        <article class="listing-card glass-card">
+          <img src="assets/set-pirate.svg" alt="Gesuchtes Set Piratenfort">
+          <h3>Piratenfort 3827</h3>
+          <p>Gesucht in komplettem Zustand. Benachrichtigung aktiv.</p>
+          <div class="status-row"><span class="status-orange">Auf Wunschliste</span><span class="status-green">6 Angebote live</span></div>
+        </article>
+        <article class="listing-card glass-card">
+          <img src="assets/set-castle.svg" alt="Gesuchte Burg-Erweiterung">
+          <h3>Burg-Erweiterung 3666</h3>
+          <p>Fehlt für vollständige Ritterwelt. Zubehör wichtig.</p>
+          <div class="status-row"><span class="status-orange">Fehlendes Set</span><span class="status-blue">Ritterwelt</span></div>
+        </article>
+        <article class="listing-card glass-card">
+          <img src="assets/set-farm.svg" alt="Gesuchte Hafenstation">
+          <h3>Hafenstation 3551</h3>
+          <p>Beobachtet seit 2 Monaten. Preisalarm aktiv.</p>
+          <div class="status-row"><span class="status-orange">Preis beobachten</span><span class="status-green">2 neue Verkäufer</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="market">
+      <div class="container section-header">
+        <div>
+          <span class="eyebrow">Marktplatz vom Sammler aus gedacht</span>
+          <h2>Angebote und Aktivität am Profil</h2>
+        </div>
+        <p>Das Profil soll zeigen, dass jemand nicht nur sammelt, sondern auch vertrauenswürdig kauft und verkauft. Dadurch wird der Marketplace persönlicher und glaubwürdiger.</p>
+      </div>
+      <div class="container feed-list">
+        <article class="feed-card glass-card">
+          <span class="kicker">Aktivität</span>
+          <h3>8 Dubletten aktuell im Verkauf</h3>
+          <p>Beispielhaft könnten hier die aktiven Listings mit Zustand, Preis und Resonanz erscheinen – direkt verknüpft mit den Sets aus dem Katalog.</p>
+        </article>
+        <article class="feed-card glass-card">
+          <span class="kicker">Bewertungen</span>
+          <h3>„Schneller Versand, sehr ehrliche Zustandsbeschreibung.“</h3>
+          <p>Bewertungen geben dem Profil Vertrauen, ohne dass es überfrachtet wirkt. Wichtig ist ein ruhiger, sammleriger Ton statt eBay-Hektik.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-panel">
+      <div><strong>Playcollect Sammlerprofil</strong><p class="muted">Mockup für Profilkarte, Sammlung, Wunschliste und Verkäufervertrauen.</p></div>
+      <a class="button button-secondary" href="set.html">Beispiel-Setdetail öffnen</a>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playcollect – Setdetail Mockup</title>
+  <meta name="description" content="Beispiel für eine Playcollect Setdetailseite mit Katalogdaten, Sammlerstatus und Marktplatzmodul.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">
+        <img class="brand-logo" src="assets/logo-playcollect.svg" alt="Playcollect Logo">
+        <span>Playcollect<small>Setdetail & Marktplatz-Kontext</small></span>
+      </a>
+      <nav class="nav" aria-label="Hauptnavigation">
+        <a href="index.html">Start</a>
+        <a href="search.html">Katalog & Suche</a>
+        <a href="collector.html">Sammlerprofil</a>
+        <a class="active" href="set.html">Setdetail</a>
+      </nav>
+      <div class="header-actions">
+        <a class="button button-secondary" href="search.html">Zurück zur Suche</a>
+        <a class="button button-primary" href="collector.html">Zur Sammlung</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="profile-hero">
+      <div class="container market-grid">
+        <article class="panel glass-card" style="padding:28px;">
+          <span class="eyebrow">Katalog-Detailseite</span>
+          <h1 style="font-size:54px; line-height:1; margin:18px 0 12px; letter-spacing:-.04em">Piratenschiff 3940</h1>
+          <p class="muted" style="font-size:18px; line-height:1.7; max-width:760px;">Eine gute Setdetailseite verbindet strukturiertes Katalogwissen mit Sammlerhilfe und Marktplatznähe: nicht nur Beschreibung, sondern Varianten, Zubehör, Wunschlistenstatus und aktuelle Angebote.</p>
+          <div class="hero-chips">
+            <span>1991 erschienen</span>
+            <span>Themenwelt Piraten</span>
+            <span>24 Angebote live</span>
+            <span>In 428 Sammlungen</span>
+          </div>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#offers">Angebote ansehen</a>
+            <a class="button button-secondary" href="#details">Setinfos lesen</a>
+          </div>
+        </article>
+        <article class="panel glass-card" style="padding:22px;">
+          <img src="assets/set-pirate.svg" alt="Setdetail Mockup Piratenschiff">
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="details">
+      <div class="container dashboard-grid">
+        <article class="panel glass-card">
+          <span class="kicker">Was auf der Seite steht</span>
+          <h3>Katalogwissen mit Sammlerbezug</h3>
+          <div class="inline-stats">
+            <span>Setnummer: 3940</span>
+            <span>Jahr: 1991</span>
+            <span>Figuren: 6</span>
+            <span>Zubehör: 18 Teile</span>
+          </div>
+          <p class="profile-bio">Hier würden Beschreibung, bekannte Varianten, Zubehör, Ersatzteile und typische Vollständigkeitshinweise stehen. Wichtig: Die Seite soll nicht nur hübsch aussehen, sondern echten Sammlern beim Einordnen helfen.</p>
+        </article>
+        <article class="panel glass-card">
+          <span class="kicker">Persönlicher Bezug</span>
+          <h3>Warum diese Seite mehr kann als ein Datenblatt</h3>
+          <p class="profile-bio">Ein eingeloggter Nutzer sieht direkt: Habe ich das Set? Fehlt es mir? Ist es auf meiner Wunschliste? Gibt es gerade passende Angebote? So verschmilzt Katalog und Collection-Management sinnvoll.</p>
+          <div class="status-row">
+            <span class="status-orange">Fehlt in deiner Piratenreihe</span>
+            <span class="status-blue">Preisalarm aktivierbar</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="offers">
+      <div class="container section-header">
+        <div>
+          <span class="eyebrow">Marktplatz direkt am Set</span>
+          <h2>Aktuelle Angebote zu diesem Set</h2>
+        </div>
+        <p>Das Listing-Modul gehört direkt an die Setseite. So entsteht ein viel stärkeres Produkterlebnis als bei getrennten Katalog- und Marktplatz-Welten.</p>
+      </div>
+      <div class="container listing-grid">
+        <article class="listing-card glass-card">
+          <div class="topline"><span>Komplett mit Figuren</span><span class="price">89 €</span></div>
+          <img src="assets/set-pirate.svg" alt="Marktplatzangebot zum Piratenschiff">
+          <h3>Angebot von Martin K.</h3>
+          <p>Sehr guter Zustand, Segel vollständig, Anleitung dabei.</p>
+          <div class="meta-row"><span>5,0 Sterne</span><span>Köln</span></div>
+        </article>
+        <article class="listing-card glass-card">
+          <div class="topline"><span>Mit OVP</span><span class="price">129 €</span></div>
+          <img src="assets/set-pirate.svg" alt="OVP-Angebot Piratenschiff">
+          <h3>Sammlerangebot mit Karton</h3>
+          <p>Stärkerer Sammlerfokus, etwas höherer Preis, dafür Box und Inlay erhalten.</p>
+          <div class="meta-row"><span>12 Beobachter</span><span>Versand aus Wien</span></div>
+        </article>
+        <article class="listing-card glass-card">
+          <div class="topline"><span>Gebraucht, fairer Zustand</span><span class="price">59 €</span></div>
+          <img src="assets/set-pirate.svg" alt="Gebrauchtes Angebot Piratenschiff">
+          <h3>Budget-Angebot</h3>
+          <p>Ein Segel ersetzt, Figuren vollständig, gutes Einsteiger-Angebot.</p>
+          <div class="meta-row"><span>3 neue Nachrichten</span><span>Sofortkauf</span></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-panel">
+      <div><strong>Playcollect Setdetail</strong><p class="muted">Mockup für die Verbindung aus Katalogdaten, Sammlerstatus und Marktplatz.</p></div>
+      <a class="button button-secondary" href="index.html">Zur Startseite</a>
+    </div>
+  </footer>
+</body>
+</html>

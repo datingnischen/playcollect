@@ -1,0 +1,25 @@
+# Node runtime artifacts
+playcollect-ui/node_modules/
+playcollect-ui/.env
+playcollect-ui/.env.*
+
+# Large generated/local asset mirrors
+playcollect-ui/public/catalog-images/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local secrets / machine state
+.env
+.env.*
+*.log
+
+# Local backup/export artifacts
+*_backup_*.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
