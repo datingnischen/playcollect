@@ -32,6 +32,12 @@ const SHOW_CATALOG_IMAGES = String(process.env.PLAYCOLLECT_SHOW_CATALOG_IMAGES |
 const CATALOG_PAGE_SIZE = 500;
 const SUPPORTED_LOCALES = ['de', 'en', 'fr'];
 const DEFAULT_LOCALE = 'de';
+const SITE_ORIGIN = String(process.env.PLAYCOLLECT_SITE_ORIGIN || 'https://playcollect.de').replace(/\/$/, '');
+const HREFLANG_MAP = {
+  de: 'de-DE',
+  en: 'en',
+  fr: 'fr-FR',
+};
 const SESSION_COOKIE_NAME = 'playcollect_session';
 const PREVIEW_GATE_COOKIE_NAME = 'playcollect_preview_gate';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -324,6 +330,121 @@ function routePath(routeKey, locale = DEFAULT_LOCALE, params = {}, query = null)
   return `${fillRouteParams(pattern, params)}${buildQueryString(query)}`;
 }
 
+function absoluteUrl(relativePath = '/') {
+  const normalizedPath = String(relativePath || '/');
+  return `${SITE_ORIGIN}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`;
+}
+
+function buildRouteParams(routeKey, params = {}, locale = DEFAULT_LOCALE) {
+  const normalizedLocale = normalizeLocale(locale);
+  if (routeKey === 'themeDetail') {
+    return {
+      ...params,
+      slug: publicThemeSlug(params.slug || ''),
+    };
+  }
+  return { ...params };
+}
+
+function buildAlternateUrls(routeKey, params = {}, query = null, locales = SUPPORTED_LOCALES) {
+  return locales.map((locale) => {
+    const normalizedLocale = normalizeLocale(locale);
+    return {
+      locale: normalizedLocale,
+      hrefLang: HREFLANG_MAP[normalizedLocale] || normalizedLocale,
+      href: absoluteUrl(routePath(routeKey, normalizedLocale, buildRouteParams(routeKey, params, normalizedLocale), query)),
+    };
+  });
+}
+
+function buildSeo(routeKey, locale = DEFAULT_LOCALE, options = {}) {
+  const normalizedLocale = normalizeLocale(locale);
+  const params = buildRouteParams(routeKey, options.params || {}, normalizedLocale);
+  const query = options.query || null;
+  const indexableLocales = Array.isArray(options.indexableLocales) && options.indexableLocales.length
+    ? options.indexableLocales.map(normalizeLocale)
+    : [DEFAULT_LOCALE];
+  const shouldIndex = Boolean(options.indexable !== false && indexableLocales.includes(normalizedLocale));
+  const canonical = absoluteUrl(routePath(routeKey, normalizedLocale, params, query));
+  return {
+    canonical,
+    robots: shouldIndex ? 'index,follow,max-image-preview:large' : 'noindex,follow',
+    alternates: options.includeAlternates === false ? [] : buildAlternateUrls(routeKey, params, query, options.alternateLocales || SUPPORTED_LOCALES),
+  };
+}
+
+function buildSitemapXml(urlEntries = []) {
+  const rows = urlEntries.map((entry) => {
+    const alternates = Array.isArray(entry.alternates)
+      ? entry.alternates.map((alternate) => `\n    <xhtml:link rel="alternate" hreflang="${esc(alternate.hrefLang)}" href="${esc(alternate.href)}" />`).join('')
+      : '';
+    const lastmod = entry.lastmod ? `\n    <lastmod>${esc(entry.lastmod)}</lastmod>` : '';
+    return `  <url>\n    <loc>${esc(entry.loc)}</loc>${lastmod}${alternates}\n  </url>`;
+  }).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${rows}\n</urlset>`;
+}
+
+function buildSitemapIndexXml(entries = []) {
+  const rows = entries.map((entry) => `  <sitemap>\n    <loc>${esc(entry.loc)}</loc>${entry.lastmod ? `\n    <lastmod>${esc(entry.lastmod)}</lastmod>` : ''}\n  </sitemap>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows}\n</sitemapindex>`;
+}
+
+async function getLocaleSitemapEntries(locale = DEFAULT_LOCALE) {
+  const normalizedLocale = normalizeLocale(locale);
+  const indexableStaticLocales = new Set([DEFAULT_LOCALE]);
+  const urls = [];
+
+  if (indexableStaticLocales.has(normalizedLocale)) {
+    const staticRoutes = ['home', 'catalog', 'themes', 'legalPlaymobil'];
+    for (const routeKey of staticRoutes) {
+      urls.push({
+        loc: absoluteUrl(routePath(routeKey, normalizedLocale)),
+        alternates: buildAlternateUrls(routeKey),
+      });
+    }
+  }
+
+  const [setRows, themeRows] = await Promise.all([
+    pool.query(
+      `SELECT s.set_number, GREATEST(s.updated_at, t.updated_at) AS lastmod
+       FROM catalog_set_translations t
+       JOIN catalog_sets s ON s.id = t.set_id
+       WHERE t.locale = $1
+         AND t.is_indexable = TRUE
+       ORDER BY s.set_number ASC`,
+      [normalizedLocale]
+    ),
+    pool.query(
+      `SELECT tt.slug, GREATEST(th.updated_at, tt.updated_at) AS lastmod
+       FROM catalog_theme_translations tt
+       JOIN catalog_themes th ON th.id = tt.theme_id
+       WHERE tt.locale = $1
+         AND tt.is_indexable = TRUE
+       ORDER BY tt.slug ASC`,
+      [normalizedLocale]
+    ),
+  ]);
+
+  for (const row of setRows.rows) {
+    urls.push({
+      loc: absoluteUrl(routePath('setDetail', normalizedLocale, { setNumber: row.set_number })),
+      lastmod: row.lastmod ? new Date(row.lastmod).toISOString() : undefined,
+      alternates: buildAlternateUrls('setDetail', { setNumber: row.set_number }),
+    });
+  }
+
+  for (const row of themeRows.rows) {
+    urls.push({
+      loc: absoluteUrl(routePath('themeDetail', normalizedLocale, buildRouteParams('themeDetail', { slug: row.slug }, normalizedLocale))),
+      lastmod: row.lastmod ? new Date(row.lastmod).toISOString() : undefined,
+      alternates: buildAlternateUrls('themeDetail', { slug: row.slug }),
+    });
+  }
+
+  return urls;
+}
+
 function canAccessInventoryImport(user) {
   return Boolean(user && user.id);
 }
@@ -492,9 +613,12 @@ app.use((req, res, next) => {
   }));
 });
 
-function layout({ title, body, metaDescription = '', currentUser = null, locale = DEFAULT_LOCALE }) {
+function layout({ title, body, metaDescription = '', currentUser = null, locale = DEFAULT_LOCALE, seo = null }) {
   const safeDescription = String(metaDescription || '').trim();
   const safeLocale = normalizeLocale(locale);
+  const canonical = seo?.canonical ? String(seo.canonical) : '';
+  const robots = seo?.robots ? String(seo.robots) : '';
+  const alternates = Array.isArray(seo?.alternates) ? seo.alternates : [];
   const isLoggedIn = Boolean(currentUser && currentUser.id);
   const homeHref = routePath('home', safeLocale);
   const searchHref = routePath('search', safeLocale);
@@ -516,6 +640,10 @@ function layout({ title, body, metaDescription = '', currentUser = null, locale 
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${esc(title)}</title>
     ${safeDescription ? `<meta name="description" content="${esc(safeDescription)}">` : ''}
+    ${robots ? `<meta name="robots" content="${esc(robots)}">` : ''}
+    ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
+    ${alternates.map((alternate) => `<link rel="alternate" hreflang="${esc(alternate.hrefLang || alternate.locale || '')}" href="${esc(alternate.href || '')}">`).join('\n    ')}
+    ${alternates.length ? `<link rel="alternate" hreflang="x-default" href="${esc(alternates.find((alternate) => alternate.locale === DEFAULT_LOCALE)?.href || absoluteUrl(routePath('home', DEFAULT_LOCALE)))}">` : ''}
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
@@ -1036,7 +1164,14 @@ app.get('/', async (req, res, next) => {
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: 'Playcollect – Für Playmobil-Liebhaber', body, currentUser: req.currentUser, locale }));
+    res.send(layout({
+      title: 'Playcollect – Für Playmobil-Liebhaber',
+      body,
+      metaDescription: 'Playcollect bündelt Playmobil-Sets, Themenwelten und Sammlerstücke für Sammler, Entdecker und Wunschlisten auf einen Blick.',
+      currentUser: req.currentUser,
+      locale,
+      seo: buildSeo('home', locale),
+    }));
   } catch (err) {
     next(err);
   }
@@ -1101,7 +1236,14 @@ app.get('/themenwelten', async (req, res, next) => {
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: 'Playcollect – Themenwelten', body, currentUser: req.currentUser, locale }));
+    res.send(layout({
+      title: 'Playcollect – Themenwelten',
+      body,
+      metaDescription: 'Entdecke bei Playcollect alle Playmobil-Themenwelten mit Set-Anzahl und direktem Einstieg in passende Sammler- und Katalogseiten.',
+      currentUser: req.currentUser,
+      locale,
+      seo: buildSeo('themes', locale),
+    }));
   } catch (err) {
     next(err);
   }
@@ -1247,7 +1389,18 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: content.seoTitle, metaDescription: content.seoDescription, body, currentUser: req.currentUser, locale }));
+    res.send(layout({
+      title: content.seoTitle,
+      metaDescription: content.seoDescription,
+      body,
+      currentUser: req.currentUser,
+      locale,
+      seo: buildSeo('themeDetail', locale, {
+        params: { slug: theme.slug },
+        query: q || year ? { q, year } : null,
+        indexable: !q && !year,
+      }),
+    }));
   } catch (err) {
     next(err);
   }
@@ -1349,7 +1502,16 @@ app.get('/katalog', async (req, res, next) => {
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: `Playcollect – Katalog Seite ${currentPage}`, body, currentUser: req.currentUser, locale }));
+    res.send(layout({
+      title: `Playcollect – Katalog Seite ${currentPage}`,
+      body,
+      metaDescription: 'Stöbere im Playcollect-Katalog nach Playmobil-Sets, Setnummern und Sammlerstücken mit schneller Übersicht über den aktuellen Bestand.',
+      currentUser: req.currentUser,
+      locale,
+      seo: buildSeo('catalog', locale, {
+        query: currentPage > 1 ? { page: currentPage } : null,
+      }),
+    }));
   } catch (err) {
     next(err);
   }
@@ -1444,7 +1606,17 @@ app.get('/search', async (req, res, next) => {
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: 'Playcollect – Suche', body, currentUser: req.currentUser, locale }));
+    res.send(layout({
+      title: 'Playcollect – Suche',
+      body,
+      metaDescription: 'Suche im Playcollect-Katalog nach Setnummern, Namen, Themenwelten und Sammlerstücken.',
+      currentUser: req.currentUser,
+      locale,
+      seo: buildSeo('search', locale, {
+        indexable: false,
+        query: null,
+      }),
+    }));
   } catch (err) {
     next(err);
   }
@@ -1716,7 +1888,16 @@ app.get('/sets/:setNumber', async (req, res, next) => {
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: `Playcollect – ${set.name}`, body, currentUser: req.currentUser, locale }));
+    res.send(layout({
+      title: `Playcollect – ${set.name}`,
+      body,
+      metaDescription: set.description || `${set.name} mit Setnummer ${set.set_number} im Playcollect-Katalog entdecken.`,
+      currentUser: req.currentUser,
+      locale,
+      seo: buildSeo('setDetail', locale, {
+        params: { setNumber: set.set_number },
+      }),
+    }));
   } catch (err) {
     next(err);
   }
@@ -2781,6 +2962,43 @@ app.get('/users/:username', async (req, res, next) => {
   }
 });
 
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send([
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /login',
+    'Disallow: /register',
+    'Disallow: /konto',
+    'Disallow: /zugang',
+    `Sitemap: ${absoluteUrl('/sitemap.xml')}`,
+  ].join('\n'));
+});
+
+app.get(['/sitemap.xml', '/sitemap-index.xml'], async (req, res, next) => {
+  try {
+    const entries = SUPPORTED_LOCALES.map((locale) => ({
+      loc: absoluteUrl(`/sitemap-${locale}.xml`),
+    }));
+    res.type('application/xml').send(buildSitemapIndexXml(entries));
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/sitemap-:locale.xml', async (req, res, next) => {
+  try {
+    const locale = normalizeLocale(req.params.locale || DEFAULT_LOCALE);
+    if (!SUPPORTED_LOCALES.includes(locale)) {
+      res.status(404).type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+      return;
+    }
+    const urls = await getLocaleSitemapEntries(locale);
+    res.type('application/xml').send(buildSitemapXml(urls));
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get('/hinweis-playmobil', async (req, res) => {
   const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
   const body = `
@@ -2800,7 +3018,14 @@ app.get('/hinweis-playmobil', async (req, res) => {
         </div>
       </section>
     </main>`;
-  res.send(layout({ title: 'Playcollect – Rechtlicher Hinweis', body, metaDescription: 'Rechtlicher Hinweis zu Playcollect als unabhängige Sammlerplattform für Playmobil-Liebhaber.', currentUser: req.currentUser, locale }));
+  res.send(layout({
+    title: 'Playcollect – Rechtlicher Hinweis',
+    body,
+    metaDescription: 'Rechtlicher Hinweis zu Playcollect als unabhängige Sammlerplattform für Playmobil-Liebhaber.',
+    currentUser: req.currentUser,
+    locale,
+    seo: buildSeo('legalPlaymobil', locale),
+  }));
 });
 
 app.use((err, req, res, next) => {
