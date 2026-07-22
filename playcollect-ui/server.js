@@ -101,6 +101,10 @@ function esc(value = '') {
     .replace(/'/g, '&#39;');
 }
 
+function cleanText(value = '') {
+  return String(value || '').trim();
+}
+
 function parseCookies(cookieHeader = '') {
   const cookies = {};
   for (const part of String(cookieHeader || '').split(';')) {
@@ -756,25 +760,137 @@ function setDetailUrl(setNumber, locale = DEFAULT_LOCALE) {
 }
 
 function publicThemeSlug(themeSlug) {
-  return themeSlug === 'unbekannt' ? 'sonstige' : themeSlug;
+  return String(themeSlug || '').trim() === 'unbekannt' ? 'sonstige' : String(themeSlug || '').trim();
 }
 
 function publicThemeName(themeName, themeSlug) {
   return themeSlug === 'unbekannt' ? 'Sonstige' : themeName;
 }
 
-function themeUrl(themeSlug, locale = DEFAULT_LOCALE) {
-  const publicSlug = publicThemeSlug(themeSlug);
+function themeUrl(themeSlug, locale = DEFAULT_LOCALE, options = {}) {
+  const publicSlug = cleanText(options.publicSlug) || publicThemeSlug(themeSlug);
   return publicSlug ? routePath('themeDetail', locale, { slug: publicSlug }) : routePath('themes', locale);
 }
 
 function renderThemeLink(themeName, themeSlug, options = {}) {
   const fallback = Object.prototype.hasOwnProperty.call(options, 'fallback') ? options.fallback : 'Playmobil';
-  const label = publicThemeName(themeName || fallback, themeSlug) || fallback;
+  const label = cleanText(options.publicName) || publicThemeName(themeName || fallback, themeSlug) || fallback;
   if (!themeName || !themeSlug) return esc(label);
   const classAttr = options.className ? ` class="${esc(options.className)}"` : '';
   const locale = normalizeLocale(options.locale || DEFAULT_LOCALE);
-  return `<a${classAttr} href="${themeUrl(themeSlug, locale)}">${esc(label)}</a>`;
+  return `<a${classAttr} href="${themeUrl(themeSlug, locale, { publicSlug: options.publicSlug })}">${esc(label)}</a>`;
+}
+
+async function loadThemeLocaleRows(themeIds = [], locale = DEFAULT_LOCALE) {
+  const normalizedLocale = normalizeLocale(locale);
+  const uniqueThemeIds = [...new Set((themeIds || []).map((value) => Number(value)).filter(Number.isFinite))];
+  if (!uniqueThemeIds.length) return new Map();
+  const result = await pool.query(
+    `SELECT
+       t.id,
+       t.slug AS internal_slug,
+       COALESCE(tt_req.name, tt_de.name, t.name) AS public_name,
+       COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS public_slug,
+       COALESCE(tt_req.intro, tt_de.intro, t.description, '') AS intro,
+       COALESCE(tt_req.hero_description, tt_de.hero_description, t.description, '') AS hero_description,
+       COALESCE(tt_req.meta_description, tt_de.meta_description, '') AS meta_description,
+       CASE WHEN $2 = 'de' THEN TRUE ELSE COALESCE(tt_req.is_indexable, FALSE) END AS locale_indexable
+     FROM catalog_themes t
+     LEFT JOIN catalog_theme_translations tt_req
+       ON tt_req.theme_id = t.id AND tt_req.locale = $2
+     LEFT JOIN catalog_theme_translations tt_de
+       ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
+     WHERE t.id = ANY($1::bigint[])`,
+    [uniqueThemeIds, normalizedLocale]
+  );
+  return new Map(result.rows.map((row) => [Number(row.id), row]));
+}
+
+async function loadThemeAlternateLocaleRows(themeId) {
+  const numericThemeId = Number(themeId);
+  if (!Number.isFinite(numericThemeId)) return [];
+  const result = await pool.query(
+    `SELECT
+       loc.locale,
+       COALESCE(tt.slug, CASE WHEN loc.locale = 'de' AND t.slug = 'unbekannt' THEN 'sonstige' WHEN loc.locale = 'de' THEN t.slug ELSE '' END) AS public_slug
+     FROM catalog_themes t
+     CROSS JOIN (VALUES ('de'), ('en'), ('fr')) AS loc(locale)
+     LEFT JOIN catalog_theme_translations tt
+       ON tt.theme_id = t.id AND tt.locale = loc.locale
+     WHERE t.id = $1`,
+    [numericThemeId]
+  );
+  return result.rows.filter((row) => cleanText(row.public_slug));
+}
+
+function buildThemeSeoAlternates(themeId, fallbackSlug) {
+  return loadThemeAlternateLocaleRows(themeId).then((rows) => {
+    const byLocale = new Map(rows.map((row) => [normalizeLocale(row.locale), row.public_slug]));
+    return SUPPORTED_LOCALES.map((locale) => {
+      const slug = byLocale.get(locale) || (locale === DEFAULT_LOCALE ? publicThemeSlug(fallbackSlug) : publicThemeSlug(fallbackSlug));
+      return {
+        locale,
+        hrefLang: HREFLANG_MAP[locale] || locale,
+        href: absoluteUrl(routePath('themeDetail', locale, { slug })),
+      };
+    });
+  });
+}
+
+async function loadSetLocaleRows(setIds = [], locale = DEFAULT_LOCALE) {
+  const normalizedLocale = normalizeLocale(locale);
+  const uniqueSetIds = [...new Set((setIds || []).map((value) => Number(value)).filter(Number.isFinite))];
+  if (!uniqueSetIds.length) return new Map();
+  const result = await pool.query(
+    `SELECT
+       s.id,
+       COALESCE(st_req.name, st_de.name, s.name) AS display_name,
+       COALESCE(st_req.description, st_de.description, s.description, '') AS display_description,
+       COALESCE(st_req.seo_title, st_de.seo_title, s.name) AS seo_title,
+       COALESCE(st_req.meta_description, st_de.meta_description, '') AS meta_description,
+       CASE WHEN $2 = 'de' THEN TRUE ELSE COALESCE(st_req.is_indexable, FALSE) END AS locale_indexable
+     FROM catalog_sets s
+     LEFT JOIN catalog_set_translations st_req
+       ON st_req.set_id = s.id AND st_req.locale = $2
+     LEFT JOIN catalog_set_translations st_de
+       ON st_de.set_id = s.id AND st_de.locale = 'de'
+     WHERE s.id = ANY($1::bigint[])`,
+    [uniqueSetIds, normalizedLocale]
+  );
+  return new Map(result.rows.map((row) => [Number(row.id), row]));
+}
+
+function applyLocaleDataToSetRows(rows = [], setLocaleRows = new Map(), themeLocaleRows = new Map()) {
+  return (rows || []).map((row) => {
+    const setLocale = setLocaleRows.get(Number(row.id)) || {};
+    const themeLocale = row.theme_id ? (themeLocaleRows.get(Number(row.theme_id)) || {}) : {};
+    return {
+      ...row,
+      name: setLocale.display_name || row.name,
+      description: setLocale.display_description || row.description,
+      seo_title: setLocale.seo_title || row.name,
+      meta_description: setLocale.meta_description || '',
+      locale_indexable: Object.prototype.hasOwnProperty.call(setLocale, 'locale_indexable') ? setLocale.locale_indexable : true,
+      theme_public_slug: themeLocale.public_slug || publicThemeSlug(row.theme_slug),
+      theme_public_name: themeLocale.public_name || publicThemeName(row.theme_name, row.theme_slug),
+    };
+  });
+}
+
+function applyLocaleDataToThemeRows(rows = [], themeLocaleRows = new Map()) {
+  return (rows || []).map((row) => {
+    const themeLocale = themeLocaleRows.get(Number(row.id)) || {};
+    return {
+      ...row,
+      internal_slug: row.slug,
+      slug: themeLocale.public_slug || publicThemeSlug(row.slug),
+      name: themeLocale.public_name || publicThemeName(row.name, row.slug),
+      intro: themeLocale.intro || row.description || '',
+      hero_description: themeLocale.hero_description || row.description || '',
+      meta_description: themeLocale.meta_description || '',
+      locale_indexable: Object.prototype.hasOwnProperty.call(themeLocale, 'locale_indexable') ? themeLocale.locale_indexable : true,
+    };
+  });
 }
 
 const THEME_SEO_COPY = {
@@ -816,11 +932,12 @@ const THEME_SEO_COPY = {
 };
 
 function buildThemePageContent(theme, stats = {}) {
-  const entry = THEME_SEO_COPY[theme.slug] || {};
+  const seoKey = theme.internal_slug || theme.slug;
+  const entry = THEME_SEO_COPY[seoKey] || {};
   const setCount = Number(stats.setCount || theme.set_count || 0);
   const imageCount = Number(stats.imageCount || theme.image_count || 0);
   const yearCount = Number(stats.yearCount || 0);
-  const baseIntro = entry.intro || `${theme.name} ist eine eigenständige Playmobil-Themenwelt mit vielen passenden Sets für Sammler, Spielwelten und gezielte Katalogsuche. Auf dieser Seite bekommst du einen direkten Überblick über alle aktuell hinterlegten Datensätze aus ${theme.name}.`;
+  const baseIntro = theme.intro || entry.intro || `${theme.name} ist eine eigenständige Playmobil-Themenwelt mit vielen passenden Sets für Sammler, Spielwelten und gezielte Katalogsuche. Auf dieser Seite bekommst du einen direkten Überblick über alle aktuell hinterlegten Datensätze aus ${theme.name}.`;
   const highlights = Array.isArray(entry.highlights) && entry.highlights.length
     ? entry.highlights
     : ['Direkt klickbare Setübersicht', 'Schneller Überblick über die Themenwelt', 'Starke Basis für Sammlung und Ausbau'];
@@ -1027,9 +1144,14 @@ function renderSetCard(set, options = {}) {
   const image = getCatalogImageUrl(set.primary_image_url);
   const desc = set.description ? esc(set.description.slice(0, 180)) : 'Noch keine Beschreibung hinterlegt.';
   const detailUrl = setDetailUrl(set.set_number, locale);
+  const themeLink = renderThemeLink(set.theme_name, set.theme_slug, {
+    locale,
+    publicSlug: set.theme_public_slug,
+    publicName: set.theme_public_name,
+  });
   return `
     <article class="result-card glass-card">
-      <div class="topline"><span>Set ${esc(set.set_number)}</span><span class="badge">${renderThemeLink(set.theme_name, set.theme_slug, { locale })}</span></div>
+      <div class="topline"><span>Set ${esc(set.set_number)}</span><span class="badge">${themeLink}</span></div>
       <a class="card-image-link" href="${detailUrl}">
         <img src="${esc(image)}" alt="${esc(set.name)}" loading="lazy">
       </a>
@@ -1039,7 +1161,7 @@ function renderSetCard(set, options = {}) {
       </div>
       <div class="status-row">
         ${set.release_year ? `<span class="status-blue">${esc(set.release_year)}</span>` : ''}
-        <span class="status-orange">${renderThemeLink(set.theme_name, set.theme_slug, { locale })}</span>
+        <span class="status-orange">${themeLink}</span>
         <span class="status-green">${esc(set.image_count)} Bild${set.image_count === 1 ? '' : 'er'}</span>
       </div>
       <div class="card-actions">
@@ -1051,7 +1173,7 @@ function renderSetCard(set, options = {}) {
 app.get('/', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
-    const [counts, latestSets, themeCounts] = await Promise.all([
+    const [counts, latestSetsRes, themeCountsRes] = await Promise.all([
       pool.query(`
         SELECT
           (SELECT COUNT(*) FROM catalog_sets) AS set_count,
@@ -1060,7 +1182,7 @@ app.get('/', async (req, res, next) => {
           (SELECT COUNT(*) FROM app_users) AS user_count
       `),
       pool.query(`
-        SELECT s.id, s.set_number, s.name, s.release_year, t.name AS theme_name, t.slug AS theme_slug,
+        SELECT s.id, s.set_number, s.name, s.release_year, t.id AS theme_id, t.name AS theme_name, t.slug AS theme_slug,
                COALESCE(s.description, '') AS description,
                COALESCE(img.local_image_path, img.image_url, '') AS primary_image_url,
                COALESCE(img_count.cnt, 0) AS image_count
@@ -1079,7 +1201,7 @@ app.get('/', async (req, res, next) => {
         LIMIT 6
       `),
       pool.query(`
-        SELECT t.slug, t.name, COUNT(s.id)::int AS set_count
+        SELECT t.id, t.slug, t.name, COUNT(s.id)::int AS set_count
         FROM catalog_themes t
         LEFT JOIN catalog_sets s ON s.theme_id = t.id
         GROUP BY t.id, t.slug, t.name
@@ -1087,6 +1209,14 @@ app.get('/', async (req, res, next) => {
         LIMIT 6
       `),
     ]);
+
+    const latestSetLocaleRows = await loadSetLocaleRows(latestSetsRes.rows.map((row) => row.id), locale);
+    const homeThemeLocaleRows = await loadThemeLocaleRows([
+      ...latestSetsRes.rows.map((row) => row.theme_id),
+      ...themeCountsRes.rows.map((row) => row.id),
+    ], locale);
+    const latestSets = applyLocaleDataToSetRows(latestSetsRes.rows, latestSetLocaleRows, homeThemeLocaleRows);
+    const themeCounts = applyLocaleDataToThemeRows(themeCountsRes.rows, homeThemeLocaleRows);
 
     const c = counts.rows[0];
     const body = `
@@ -1121,7 +1251,7 @@ app.get('/', async (req, res, next) => {
                       <input name="q" value="Pirat" aria-label="Katalog durchsuchen">
                     </form>
                     <div class="set-grid">
-                      ${latestSets.rows.slice(0, 2).map((set) => renderSetCard(set, { locale })).join('')}
+                      ${latestSets.slice(0, 2).map((set) => renderSetCard(set, { locale })).join('')}
                     </div>
                   </div>
                 </div>
@@ -1145,12 +1275,12 @@ app.get('/', async (req, res, next) => {
             <p>Hier findest du die Themenwelten, in denen bereits viele passende Sets hinterlegt sind – perfekt zum Stöbern, Vergleichen und Wiederentdecken alter Lieblingsreihen.</p>
           </div>
           <div class="container feature-grid">
-            ${themeCounts.rows.map(row => `
+            ${themeCounts.map(row => `
               <article class="feature-card glass-card">
                 <span class="kicker">Themenwelt</span>
-                <h3><a class="theme-link" href="${themeUrl(row.slug, locale)}">${esc(publicThemeName(row.name, row.slug))}</a></h3>
+                <h3><a class="theme-link" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">${esc(row.name)}</a></h3>
                 <p>${esc(row.set_count)} Sets warten hier aktuell auf Sammler und Entdecker.</p>
-                <a class="button button-soft" href="${themeUrl(row.slug, locale)}">Themenwelt öffnen</a>
+                <a class="button button-soft" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">Themenwelt öffnen</a>
               </article>`).join('')}
           </div>
         </section>
@@ -1160,7 +1290,7 @@ app.get('/', async (req, res, next) => {
             <p>Diese Auswahl zeigt dir direkt, welche Sets gerade im Playcollect-Katalog hinterlegt sind – ideal zum Entdecken, Sammeln und Merken für die eigene Wunschliste.</p>
           </div>
           <div class="container results-grid">
-            ${latestSets.rows.map((set) => renderSetCard(set, { locale })).join('')}
+            ${latestSets.map((set) => renderSetCard(set, { locale })).join('')}
           </div>
         </section>
       </main>`;
@@ -1181,7 +1311,8 @@ app.get('/themenwelten', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const themesRes = await pool.query(`
-      SELECT t.slug,
+      SELECT t.id,
+             t.slug,
              t.name,
              COUNT(s.id)::int AS set_count,
              COALESCE(SUM(img_count.cnt), 0)::int AS image_count
@@ -1194,9 +1325,13 @@ app.get('/themenwelten', async (req, res, next) => {
       HAVING COUNT(s.id) > 0
       ORDER BY set_count DESC, t.name ASC
     `);
+    const themes = applyLocaleDataToThemeRows(
+      themesRes.rows,
+      await loadThemeLocaleRows(themesRes.rows.map((row) => row.id), locale)
+    );
 
-    const totalThemes = themesRes.rowCount;
-    const totalSets = themesRes.rows.reduce((sum, row) => sum + Number(row.set_count || 0), 0);
+    const totalThemes = themes.length;
+    const totalSets = themes.reduce((sum, row) => sum + Number(row.set_count || 0), 0);
     const body = `
       <main>
         <section class="search-hero catalog-hero">
@@ -1220,17 +1355,17 @@ app.get('/themenwelten', async (req, res, next) => {
         </section>
         <section class="section" style="padding-top:10px">
           <div class="container feature-grid">
-            ${themesRes.rows.map((row) => `
+            ${themes.map((row) => `
               <article class="feature-card glass-card">
                 <span class="kicker">Themenwelt</span>
-                <h3><a class="theme-link" href="${themeUrl(row.slug, locale)}">${esc(publicThemeName(row.name, row.slug))}</a></h3>
+                <h3><a class="theme-link" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">${esc(row.name)}</a></h3>
                 <p>${esc(row.set_count)} Sets · ${esc(row.image_count)} Bilder zum Entdecken.</p>
                 <div class="status-row theme-status-row">
                   <span class="status-orange">${esc(row.set_count)} Sets</span>
                   <span class="status-green">${esc(row.image_count)} Bilder</span>
                 </div>
                 <div class="card-actions">
-                  <a class="button button-soft" href="${themeUrl(row.slug, locale)}">Themenwelt öffnen</a>
+                  <a class="button button-soft" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">Themenwelt öffnen</a>
                 </div>
               </article>`).join('')}
           </div>
@@ -1252,27 +1387,36 @@ app.get('/themenwelten', async (req, res, next) => {
 app.get('/themenwelten/:slug', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
-    const slug = String(req.params.slug || '').trim();
-    const dbThemeSlug = slug === 'sonstige' ? 'unbekannt' : slug;
+    const requestedSlug = String(req.params.slug || '').trim();
     const q = String(req.query.q || '').trim();
     const year = String(req.query.year || '').trim();
 
     const themeRes = await pool.query(`
-      SELECT t.id,
-             t.slug,
-             t.name,
-             COUNT(s.id)::int AS set_count,
-             COALESCE(SUM(img_count.cnt), 0)::int AS image_count,
-             COUNT(DISTINCT s.release_year)::int AS year_count
+      SELECT
+        t.id,
+        t.slug AS internal_slug,
+        COALESCE(tt_req.name, tt_de.name, t.name) AS name,
+        COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS slug,
+        COALESCE(tt_req.intro, tt_de.intro, t.description, '') AS intro,
+        COALESCE(tt_req.hero_description, tt_de.hero_description, t.description, '') AS hero_description,
+        COALESCE(tt_req.meta_description, tt_de.meta_description, '') AS meta_description,
+        CASE WHEN $1 = 'de' THEN TRUE ELSE COALESCE(tt_req.is_indexable, FALSE) END AS locale_indexable,
+        COUNT(s.id)::int AS set_count,
+        COALESCE(SUM(img_count.cnt), 0)::int AS image_count,
+        COUNT(DISTINCT s.release_year)::int AS year_count
       FROM catalog_themes t
+      LEFT JOIN catalog_theme_translations tt_req
+        ON tt_req.theme_id = t.id AND tt_req.locale = $1
+      LEFT JOIN catalog_theme_translations tt_de
+        ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
       LEFT JOIN catalog_sets s ON s.theme_id = t.id
       LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
       ) img_count ON TRUE
-      WHERE t.slug = $1
-      GROUP BY t.id, t.slug, t.name
+      WHERE LOWER(COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END)) = LOWER($2)
+      GROUP BY t.id, t.slug, t.name, tt_req.name, tt_de.name, tt_req.slug, tt_de.slug, tt_req.intro, tt_de.intro, tt_req.hero_description, tt_de.hero_description, tt_req.meta_description, tt_de.meta_description, tt_req.is_indexable
       LIMIT 1
-    `, [dbThemeSlug]);
+    `, [locale, requestedSlug]);
 
     if (!themeRes.rowCount) {
       res.status(404).send(layout({ title: 'Themenwelt nicht gefunden', body: `<main class="section"><div class="container"><article class="panel glass-card"><h1>Themenwelt nicht gefunden</h1><p class="muted">Für diese Themenwelt gibt es aktuell keinen Eintrag.</p><div class="hero-actions"><a class="button button-primary" href="${routePath('themes', locale)}">Zur Themenwelten-Übersicht</a></div></article></div></main>`, currentUser: req.currentUser, locale }));
@@ -1280,14 +1424,17 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
     }
 
     const theme = themeRes.rows[0];
-    theme.slug = publicThemeSlug(theme.slug);
-    theme.name = publicThemeName(theme.name, dbThemeSlug);
-    const filters = ['t.slug = $1'];
-    const params = [dbThemeSlug];
+    const filters = ['s.theme_id = $1'];
+    const params = [theme.id];
 
     if (q) {
       params.push(`%${q}%`);
-      filters.push(`(s.name ILIKE $${params.length} OR s.set_number ILIKE $${params.length} OR COALESCE(s.description, '') ILIKE $${params.length})`);
+      const searchParam = `$${params.length}`;
+      filters.push(`(
+        COALESCE(st_req.name, st_de.name, s.name) ILIKE ${searchParam}
+        OR s.set_number ILIKE ${searchParam}
+        OR COALESCE(st_req.description, st_de.description, s.description, '') ILIKE ${searchParam}
+      )`);
     }
 
     if (year) {
@@ -1295,26 +1442,28 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
       filters.push(`COALESCE(s.release_year::text, '') = $${params.length}`);
     }
 
-    const [yearsRes, setsRes] = await Promise.all([
+    const [yearsRes, setsRes, themeAlternates] = await Promise.all([
       pool.query(`
         SELECT DISTINCT s.release_year
         FROM catalog_sets s
-        JOIN catalog_themes t ON t.id = s.theme_id
-        WHERE t.slug = $1 AND s.release_year IS NOT NULL
+        WHERE s.theme_id = $1 AND s.release_year IS NOT NULL
         ORDER BY s.release_year DESC
-      `, [dbThemeSlug]),
+      `, [theme.id]),
       pool.query(`
         SELECT s.id,
                s.set_number,
-               s.name,
+               COALESCE(st_req.name, st_de.name, s.name) AS name,
                s.release_year,
+               t.id AS theme_id,
                t.name AS theme_name,
                t.slug AS theme_slug,
-               COALESCE(s.description, '') AS description,
+               COALESCE(st_req.description, st_de.description, s.description, '') AS description,
                COALESCE(img.local_image_path, img.image_url, '') AS primary_image_url,
                COALESCE(img_count.cnt, 0) AS image_count
         FROM catalog_sets s
         JOIN catalog_themes t ON t.id = s.theme_id
+        LEFT JOIN catalog_set_translations st_req ON st_req.set_id = s.id AND st_req.locale = $${params.length + 1}
+        LEFT JOIN catalog_set_translations st_de ON st_de.set_id = s.id AND st_de.locale = 'de'
         LEFT JOIN LATERAL (
           SELECT image_url, local_image_path FROM catalog_set_images i
           WHERE i.set_id = s.id
@@ -1326,7 +1475,8 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
         ) img_count ON TRUE
         WHERE ${filters.join(' AND ')}
         ORDER BY CASE WHEN s.set_number ~ '^\\d+$' THEN s.set_number::int ELSE 999999999 END ASC, s.set_number ASC
-      `, params),
+      `, [...params, locale]),
+      buildThemeSeoAlternates(theme.id, theme.internal_slug || theme.slug),
     ]);
 
     const content = buildThemePageContent(theme, {
@@ -1372,7 +1522,7 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
             <p>${filterSummary}</p>
           </div>
           <div class="container">
-            <form class="search-toolbar" method="get" action="${themeUrl(theme.slug, locale)}">
+            <form class="search-toolbar" method="get" action="${themeUrl(theme.internal_slug || theme.slug, locale, { publicSlug: theme.slug })}">
               <div class="filter-box search-shell"><span>🔎</span><input name="q" placeholder="Nach Name, Beschreibung oder Setnummer suchen" value="${esc(q)}"></div>
               <div class="filter-box">
                 <select class="filter-select" name="year">
@@ -1381,7 +1531,7 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
                 </select>
               </div>
               <button class="button button-primary" type="submit">Filter anwenden</button>
-              <a class="button button-secondary" href="${themeUrl(theme.slug, locale)}">Zurücksetzen</a>
+              <a class="button button-secondary" href="${themeUrl(theme.internal_slug || theme.slug, locale, { publicSlug: theme.slug })}">Zurücksetzen</a>
             </form>
           </div>
           <div class="container ${setsRes.rowCount ? 'results-grid' : ''}">
@@ -1395,11 +1545,15 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
       body,
       currentUser: req.currentUser,
       locale,
-      seo: buildSeo('themeDetail', locale, {
-        params: { slug: theme.slug },
-        query: q || year ? { q, year } : null,
-        indexable: !q && !year,
-      }),
+      seo: {
+        ...buildSeo('themeDetail', locale, {
+          params: { slug: theme.slug },
+          query: q || year ? { q, year } : null,
+          indexable: !q && !year && theme.locale_indexable,
+          includeAlternates: false,
+        }),
+        alternates: themeAlternates,
+      },
     }));
   } catch (err) {
     next(err);
@@ -1416,7 +1570,7 @@ app.get('/katalog', async (req, res, next) => {
     const currentPage = Math.min(page, totalPages);
     const offset = (currentPage - 1) * CATALOG_PAGE_SIZE;
     const setsRes = await pool.query(
-      `SELECT s.id, s.set_number, s.slug, s.name, s.release_year, s.metadata, t.name AS theme_name, t.slug AS theme_slug,
+      `SELECT s.id, s.set_number, s.slug, s.name, s.release_year, s.metadata, t.id AS theme_id, t.name AS theme_name, t.slug AS theme_slug,
               COALESCE(s.description, '') AS description,
               COALESCE(img_count.cnt, 0) AS image_count
        FROM catalog_sets s
@@ -1427,6 +1581,12 @@ app.get('/katalog', async (req, res, next) => {
        ORDER BY CASE WHEN s.set_number ~ '^\\d+$' THEN s.set_number::int ELSE 999999999 END ASC, s.set_number ASC
        LIMIT $1 OFFSET $2`,
       [CATALOG_PAGE_SIZE, offset]
+    );
+    const catalogThemeLocaleRows = await loadThemeLocaleRows(setsRes.rows.map((row) => row.theme_id), locale);
+    const sets = applyLocaleDataToSetRows(
+      setsRes.rows,
+      await loadSetLocaleRows(setsRes.rows.map((row) => row.id), locale),
+      catalogThemeLocaleRows
     );
 
     const pageLinks = [];
@@ -1480,13 +1640,13 @@ app.get('/katalog', async (req, res, next) => {
                     </tr>
                   </thead>
 <tbody>
-                    ${setsRes.rows.map((set) => {
+                    ${sets.map((set) => {
                       const pricing = extractPricingMetadata(set.metadata);
                       return `
                       <tr>
                         <td class="catalog-set-number"><a href="${setDetailUrl(set.set_number, locale)}">${esc(set.set_number)}</a></td>
                         <td><a class="catalog-name-link" href="${setDetailUrl(set.set_number, locale)}">${esc(set.name)}</a></td>
-                        <td>${renderThemeLink(set.theme_name, set.theme_slug, { fallback: '–', className: 'theme-link', locale })}</td>
+                        <td>${renderThemeLink(set.theme_name, set.theme_slug, { fallback: '–', className: 'theme-link', locale, publicSlug: set.theme_public_slug, publicName: set.theme_public_name })}</td>
                         <td>${set.release_year ? esc(set.release_year) : '–'}</td>
                         <td>${esc(formatMoneyFromCents(pricing.introductionPriceCents))}</td>
                         <td>${esc(formatMoneyFromCents(pricing.estimatedMarketValueCents))}</td>
@@ -1527,27 +1687,40 @@ app.get('/search', async (req, res, next) => {
     const where = [];
     if (q) {
       params.push(`%${q}%`);
-      where.push(`(s.name ILIKE $${params.length} OR s.set_number ILIKE $${params.length} OR COALESCE(s.description,'') ILIKE $${params.length})`);
+      const searchParam = `$${params.length}`;
+      where.push(`(
+        COALESCE(st_req.name, st_de.name, s.name) ILIKE ${searchParam}
+        OR s.set_number ILIKE ${searchParam}
+        OR COALESCE(st_req.description, st_de.description, s.description, '') ILIKE ${searchParam}
+      )`);
     }
     if (theme) {
+      const publicThemeExpr = `LOWER(COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END))`;
+      const publicThemeNameExpr = `COALESCE(tt_req.name, tt_de.name, t.name)`;
       if (normalizedTheme === 'sonstige' || normalizedTheme === 'unbekannt') {
-        params.push('unbekannt');
-        where.push(`t.slug = $${params.length}`);
+        params.push('sonstige');
+        where.push(`${publicThemeExpr} = $${params.length}`);
       } else {
         params.push(normalizedTheme);
         const slugParamIndex = params.length;
         params.push(theme);
         const nameParamIndex = params.length;
-        where.push(`(LOWER(t.slug) = $${slugParamIndex} OR t.name = $${nameParamIndex})`);
+        where.push(`(${publicThemeExpr} = $${slugParamIndex} OR LOWER(t.slug) = $${slugParamIndex} OR ${publicThemeNameExpr} = $${nameParamIndex})`);
       }
     }
     const sql = `
-      SELECT s.id, s.set_number, s.name, s.release_year, t.name AS theme_name, t.slug AS theme_slug,
-             COALESCE(s.description, '') AS description,
+      SELECT s.id, s.set_number, COALESCE(st_req.name, st_de.name, s.name) AS name, s.release_year, t.id AS theme_id, t.name AS theme_name, t.slug AS theme_slug,
+             COALESCE(tt_req.name, tt_de.name, t.name) AS theme_public_name,
+             COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS theme_public_slug,
+             COALESCE(st_req.description, st_de.description, s.description, '') AS description,
              COALESCE(img.local_image_path, img.image_url, '') AS primary_image_url,
              COALESCE(img_count.cnt, 0) AS image_count
       FROM catalog_sets s
       LEFT JOIN catalog_themes t ON t.id = s.theme_id
+      LEFT JOIN catalog_set_translations st_req ON st_req.set_id = s.id AND st_req.locale = $${params.length + 1}
+      LEFT JOIN catalog_set_translations st_de ON st_de.set_id = s.id AND st_de.locale = 'de'
+      LEFT JOIN catalog_theme_translations tt_req ON tt_req.theme_id = t.id AND tt_req.locale = $${params.length + 1}
+      LEFT JOIN catalog_theme_translations tt_de ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
       LEFT JOIN LATERAL (
         SELECT image_url, local_image_path FROM catalog_set_images i
         WHERE i.set_id = s.id
@@ -1558,20 +1731,23 @@ app.get('/search', async (req, res, next) => {
         SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
       ) img_count ON TRUE
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY COALESCE(s.release_year, 9999) DESC, s.name ASC
+      ORDER BY COALESCE(s.release_year, 9999) DESC, COALESCE(st_req.name, st_de.name, s.name) ASC
       LIMIT 60
     `;
     const [themesRes, setsRes] = await Promise.all([
-      pool.query(`SELECT name, slug FROM catalog_themes ORDER BY name ASC`),
-      pool.query(sql, params),
+      pool.query(`SELECT id, name, slug FROM catalog_themes ORDER BY name ASC`),
+      pool.query(sql, [...params, locale]),
     ]);
-    const themeOptions = themesRes.rows
+    const themeOptions = applyLocaleDataToThemeRows(
+      themesRes.rows,
+      await loadThemeLocaleRows(themesRes.rows.map((row) => row.id), locale)
+    )
       .map((row) => ({
         ...row,
-        publicSlug: publicThemeSlug(row.slug),
-        publicName: publicThemeName(row.name, row.slug),
+        publicSlug: row.slug,
+        publicName: row.name,
       }))
-      .sort((a, b) => a.publicName.localeCompare(b.publicName, 'de'));
+      .sort((a, b) => a.publicName.localeCompare(b.publicName, locale === 'de' ? 'de' : 'en'));
     const body = `
       <main>
         <section class="search-hero">
@@ -1627,20 +1803,30 @@ app.get('/sets/:setNumber', async (req, res, next) => {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const setNumber = String(req.params.setNumber || '').trim();
     const setRes = await pool.query(
-      `SELECT s.id, s.set_number, s.slug, s.name, s.release_year, s.category_label,
-              COALESCE(s.description, '') AS description,
+      `SELECT s.id, s.set_number, s.slug, COALESCE(st_req.name, st_de.name, s.name) AS name, s.release_year, s.category_label,
+              COALESCE(st_req.description, st_de.description, s.description, '') AS description,
+              COALESCE(st_req.seo_title, st_de.seo_title, s.name) AS seo_title,
+              COALESCE(st_req.meta_description, st_de.meta_description, '') AS meta_description,
+              CASE WHEN $2 = 'de' THEN TRUE ELSE COALESCE(st_req.is_indexable, FALSE) END AS locale_indexable,
               s.metadata,
+              t.id AS theme_id,
               t.name AS theme_name,
               t.slug AS theme_slug,
+              COALESCE(tt_req.name, tt_de.name, t.name) AS theme_public_name,
+              COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS theme_public_slug,
               COALESCE(img_count.cnt, 0) AS image_count
        FROM catalog_sets s
+       LEFT JOIN catalog_set_translations st_req ON st_req.set_id = s.id AND st_req.locale = $2
+       LEFT JOIN catalog_set_translations st_de ON st_de.set_id = s.id AND st_de.locale = 'de'
        LEFT JOIN catalog_themes t ON t.id = s.theme_id
+       LEFT JOIN catalog_theme_translations tt_req ON tt_req.theme_id = t.id AND tt_req.locale = $2
+       LEFT JOIN catalog_theme_translations tt_de ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
        ) img_count ON TRUE
        WHERE s.set_number = $1
        LIMIT 1`,
-      [setNumber]
+      [setNumber, locale]
     );
 
     if (!setRes.rowCount) {
@@ -1649,6 +1835,13 @@ app.get('/sets/:setNumber', async (req, res, next) => {
     }
 
     const set = setRes.rows[0];
+    const setThemeLink = renderThemeLink(set.theme_name || set.category_label, set.theme_slug, {
+      fallback: 'Playmobil',
+      className: 'theme-link',
+      locale,
+      publicSlug: set.theme_public_slug,
+      publicName: set.theme_public_name,
+    });
     const [imagesRes, relatedRes, themeStatsRes, userCollectionsRes, userSetCollectionsRes] = await Promise.all([
       pool.query(
         `SELECT COALESCE(local_image_path, image_url) AS image_url,
@@ -1659,12 +1852,18 @@ app.get('/sets/:setNumber', async (req, res, next) => {
         [set.id]
       ),
       pool.query(
-        `SELECT s.id, s.set_number, s.name, s.release_year, t.name AS theme_name, t.slug AS theme_slug,
-                COALESCE(s.description, '') AS description,
+        `SELECT s.id, s.set_number, COALESCE(st_req.name, st_de.name, s.name) AS name, s.release_year, t.id AS theme_id, t.name AS theme_name, t.slug AS theme_slug,
+                COALESCE(tt_req.name, tt_de.name, t.name) AS theme_public_name,
+                COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS theme_public_slug,
+                COALESCE(st_req.description, st_de.description, s.description, '') AS description,
                 COALESCE(img.local_image_path, img.image_url, '') AS primary_image_url,
                 COALESCE(img_count.cnt, 0) AS image_count
          FROM catalog_sets s
+         LEFT JOIN catalog_set_translations st_req ON st_req.set_id = s.id AND st_req.locale = $2
+         LEFT JOIN catalog_set_translations st_de ON st_de.set_id = s.id AND st_de.locale = 'de'
          LEFT JOIN catalog_themes t ON t.id = s.theme_id
+         LEFT JOIN catalog_theme_translations tt_req ON tt_req.theme_id = t.id AND tt_req.locale = $2
+         LEFT JOIN catalog_theme_translations tt_de ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
          LEFT JOIN LATERAL (
            SELECT image_url, local_image_path FROM catalog_set_images i
            WHERE i.set_id = s.id
@@ -1676,9 +1875,9 @@ app.get('/sets/:setNumber', async (req, res, next) => {
          ) img_count ON TRUE
          WHERE s.theme_id = (SELECT theme_id FROM catalog_sets WHERE id = $1)
            AND s.id <> $1
-         ORDER BY s.name ASC
+         ORDER BY COALESCE(st_req.name, st_de.name, s.name) ASC
          LIMIT 3`,
-        [set.id]
+        [set.id, locale]
       ),
       pool.query(
         `SELECT COUNT(*)::int AS set_count
@@ -1815,11 +2014,11 @@ app.get('/sets/:setNumber', async (req, res, next) => {
               ${breadcrumbTrail.length ? `<div class="detail-breadcrumbs">${breadcrumbTrail.map(part => `<span>${esc(part)}</span>`).join('<i>›</i>')}</div>` : ''}
               <span class="eyebrow">Set im Überblick</span>
               <h1 class="detail-title">${esc(set.name)}</h1>
-              <p class="detail-subline">Set ${esc(set.set_number)} · ${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link', locale })}</p>
+              <p class="detail-subline">Set ${esc(set.set_number)} · ${setThemeLink}</p>
               <div class="inline-stats detail-stats">
                 <span>Setnummer ${esc(set.set_number)}</span>
                 ${set.release_year ? `<span>Jahr ${esc(set.release_year)}</span>` : ''}
-                <span>${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link', locale })}</span>
+                <span>${setThemeLink}</span>
                 <span>${esc(set.image_count)} Bild${set.image_count === 1 ? '' : 'er'}</span>
               </div>
               <p class="detail-description">${esc(set.description || 'Für dieses Set ist aktuell noch keine Beschreibung importiert.')}</p>
@@ -1852,7 +2051,7 @@ app.get('/sets/:setNumber', async (req, res, next) => {
                   </article>
                   <article class="panel glass-card">
                     <span class="kicker">Themenwelt</span>
-                    <h3>${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link', locale })}</h3>
+                    <h3>${setThemeLink}</h3>
                     <p>${themeSetCount} weitere Sets warten in dieser Themenwelt auf dich und lassen sich direkt weiter entdecken.</p>
                   </article>
                 </div>
@@ -1860,7 +2059,7 @@ app.get('/sets/:setNumber', async (req, res, next) => {
               ${addToCollectionPanel}
               <div class="hero-actions detail-actions">
                 <a class="button button-primary" href="${routePath('search', locale, {}, { q: set.set_number })}">In der Suche öffnen</a>
-                ${set.theme_name ? `<a class="button button-secondary" href="${themeUrl(set.theme_slug, locale)}">Mehr aus ${esc(set.theme_name)}</a>` : `<a class="button button-secondary" href="${routePath('search', locale)}">Zur Suche</a>`}
+                ${set.theme_name ? `<a class="button button-secondary" href="${themeUrl(set.theme_slug, locale, { publicSlug: set.theme_public_slug })}">Mehr aus ${esc(set.theme_public_name || set.theme_name)}</a>` : `<a class="button button-secondary" href="${routePath('search', locale)}">Zur Suche</a>`}
                 ${sourceUrl ? `<a class="button button-ghost" href="${esc(sourceUrl)}" target="_blank" rel="nofollow noopener noreferrer">Originalquelle ansehen</a>` : ''}
               </div>
               <div class="detail-meta-grid">
@@ -1891,11 +2090,12 @@ app.get('/sets/:setNumber', async (req, res, next) => {
     res.send(layout({
       title: `Playcollect – ${set.name}`,
       body,
-      metaDescription: set.description || `${set.name} mit Setnummer ${set.set_number} im Playcollect-Katalog entdecken.`,
+      metaDescription: set.meta_description || set.description || `${set.name} mit Setnummer ${set.set_number} im Playcollect-Katalog entdecken.`,
       currentUser: req.currentUser,
       locale,
       seo: buildSeo('setDetail', locale, {
         params: { setNumber: set.set_number },
+        indexable: set.locale_indexable,
       }),
     }));
   } catch (err) {
