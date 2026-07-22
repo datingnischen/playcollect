@@ -38,6 +38,119 @@ const HREFLANG_MAP = {
   en: 'en',
   fr: 'fr-FR',
 };
+const UI_TEXT = {
+  de: {
+    locales: { de: '🇩🇪 DE', en: '🇬🇧 EN', fr: '🇫🇷 FR' },
+    layout: {
+      sidebarIntro: 'Schnellzugriff für Sammler, Suche und Sammlung.',
+      navHome: 'Start',
+      navSearch: 'Suche',
+      navCatalog: 'Katalog',
+      navThemes: 'Themenwelten',
+      navLegal: 'Rechtlicher Hinweis',
+      login: 'Login',
+      register: 'Registrieren',
+      myArea: 'Mein Bereich',
+      accountShort: 'Bereich',
+      quickThemes: 'Themen',
+      brandSubline: 'Für Playmobil-Liebhaber & Sammler',
+      footerAbout: 'Playcollect ist eine unabhängige Sammler- und Entdeckerplattform für Playmobil-Liebhaber. Wir gehören nicht zur geobra Brandstätter Stiftung & Co. KG und stehen in keiner offiziellen Verbindung zur Marke PLAYMOBIL.',
+      localeLabel: 'Sprache',
+    },
+    common: {
+      openCatalog: 'Katalog öffnen',
+      openSearch: 'Suche öffnen',
+      openThemes: 'Themenwelten ansehen',
+      backHome: 'Zur Startseite',
+      allThemes: 'Alle Themenwelten',
+      allYears: 'Alle Jahrgänge',
+      applyFilters: 'Filter anwenden',
+      reset: 'Zurücksetzen',
+      searchPlaceholder: 'Nach Name, Beschreibung oder Setnummer suchen',
+      themeLabel: 'Themenwelt',
+      hits: 'Treffer',
+      sets: 'Sets',
+      images: 'Bilder',
+      years: 'Jahrgänge',
+      currentHits: 'aktuelle Treffer',
+      openSet: 'Set ansehen',
+    },
+  },
+  en: {
+    locales: { de: '🇩🇪 DE', en: '🇬🇧 EN', fr: '🇫🇷 FR' },
+    layout: {
+      sidebarIntro: 'Quick access for collectors, search, and collection tools.',
+      navHome: 'Home',
+      navSearch: 'Search',
+      navCatalog: 'Catalog',
+      navThemes: 'Themes',
+      navLegal: 'Legal notice',
+      login: 'Log in',
+      register: 'Register',
+      myArea: 'My area',
+      accountShort: 'Account',
+      quickThemes: 'Themes',
+      brandSubline: 'For Playmobil lovers & collectors',
+      footerAbout: 'Playcollect is an independent collector and discovery platform for Playmobil fans. We are not affiliated with geobra Brandstätter Stiftung & Co. KG and have no official connection to the PLAYMOBIL brand.',
+      localeLabel: 'Language',
+    },
+    common: {
+      openCatalog: 'Open catalog',
+      openSearch: 'Open search',
+      openThemes: 'View themes',
+      backHome: 'Back to home',
+      allThemes: 'All themes',
+      allYears: 'All years',
+      applyFilters: 'Apply filters',
+      reset: 'Reset',
+      searchPlaceholder: 'Search by name, description, or set number',
+      themeLabel: 'Theme',
+      hits: 'hits',
+      sets: 'sets',
+      images: 'images',
+      years: 'years',
+      currentHits: 'current matches',
+      openSet: 'View set',
+    },
+  },
+  fr: {
+    locales: { de: '🇩🇪 DE', en: '🇬🇧 EN', fr: '🇫🇷 FR' },
+    layout: {
+      sidebarIntro: 'Accès rapide pour collectionneurs, recherche et collection.',
+      navHome: 'Accueil',
+      navSearch: 'Recherche',
+      navCatalog: 'Catalogue',
+      navThemes: 'Thèmes',
+      navLegal: 'Mention légale',
+      login: 'Connexion',
+      register: 'Inscription',
+      myArea: 'Mon espace',
+      accountShort: 'Compte',
+      quickThemes: 'Thèmes',
+      brandSubline: 'Pour les fans et collectionneurs Playmobil',
+      footerAbout: 'Playcollect est une plateforme indépendante de découverte et de collection pour les fans de Playmobil. Nous ne sommes pas affiliés à geobra Brandstätter Stiftung & Co. KG et n’avons aucun lien officiel avec la marque PLAYMOBIL.',
+      localeLabel: 'Langue',
+    },
+    common: {
+      openCatalog: 'Ouvrir le catalogue',
+      openSearch: 'Ouvrir la recherche',
+      openThemes: 'Voir les thèmes',
+      backHome: 'Retour à l’accueil',
+      allThemes: 'Tous les thèmes',
+      allYears: 'Toutes les années',
+      applyFilters: 'Appliquer les filtres',
+      reset: 'Réinitialiser',
+      searchPlaceholder: 'Rechercher par nom, description ou numéro de set',
+      themeLabel: 'Thème',
+      hits: 'résultats',
+      sets: 'sets',
+      images: 'images',
+      years: 'années',
+      currentHits: 'résultats actuels',
+      openSet: 'Voir le set',
+    },
+  },
+};
 const SESSION_COOKIE_NAME = 'playcollect_session';
 const PREVIEW_GATE_COOKIE_NAME = 'playcollect_preview_gate';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -394,6 +507,23 @@ function buildSitemapIndexXml(entries = []) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows}\n</sitemapindex>`;
 }
 
+function getLocaleCopy(locale = DEFAULT_LOCALE) {
+  const normalizedLocale = normalizeLocale(locale);
+  return UI_TEXT[normalizedLocale] || UI_TEXT[DEFAULT_LOCALE];
+}
+
+function buildLocaleSwitcherLinks(locale = DEFAULT_LOCALE, seo = null) {
+  const alternates = Array.isArray(seo?.alternates) ? seo.alternates : [];
+  const hrefByLocale = new Map(alternates.map((item) => [normalizeLocale(item.locale || item.hrefLang), item.href]));
+  const labels = getLocaleCopy(locale).locales || getLocaleCopy(DEFAULT_LOCALE).locales;
+  return SUPPORTED_LOCALES.map((entryLocale) => ({
+    locale: entryLocale,
+    label: labels?.[entryLocale] || entryLocale.toUpperCase(),
+    href: hrefByLocale.get(entryLocale) || absoluteUrl(routePath('home', entryLocale)),
+    isActive: normalizeLocale(locale) === entryLocale,
+  }));
+}
+
 async function getLocaleSitemapEntries(locale = DEFAULT_LOCALE) {
   const normalizedLocale = normalizeLocale(locale);
   const indexableStaticLocales = new Set([DEFAULT_LOCALE]);
@@ -620,9 +750,14 @@ app.use((req, res, next) => {
 function layout({ title, body, metaDescription = '', currentUser = null, locale = DEFAULT_LOCALE, seo = null }) {
   const safeDescription = String(metaDescription || '').trim();
   const safeLocale = normalizeLocale(locale);
+  const copy = getLocaleCopy(safeLocale);
+  const layoutText = copy.layout;
   const canonical = seo?.canonical ? String(seo.canonical) : '';
   const robots = seo?.robots ? String(seo.robots) : '';
   const alternates = Array.isArray(seo?.alternates) ? seo.alternates : [];
+  const localeSwitcherLinks = buildLocaleSwitcherLinks(safeLocale, seo);
+  const localeSwitcher = `<div class="locale-switcher" aria-label="${esc(layoutText.localeLabel)}">${localeSwitcherLinks.map((item) => `<a href="${esc(item.href)}" class="locale-chip ${item.isActive ? 'is-active' : ''}">${esc(item.label)}</a>`).join('')}</div>`;
+  const localeSwitcherMobile = `<div class="sidebar-locale-block"><span class="sidebar-kicker">${esc(layoutText.localeLabel)}</span><div class="locale-switcher locale-switcher-mobile">${localeSwitcherLinks.map((item) => `<a href="${esc(item.href)}" class="locale-chip ${item.isActive ? 'is-active' : ''}">${esc(item.label)}</a>`).join('')}</div></div>`;
   const isLoggedIn = Boolean(currentUser && currentUser.id);
   const homeHref = routePath('home', safeLocale);
   const searchHref = routePath('search', safeLocale);
@@ -630,13 +765,13 @@ function layout({ title, body, metaDescription = '', currentUser = null, locale 
   const themesHref = routePath('themes', safeLocale);
   const legalHref = routePath('legalPlaymobil', safeLocale);
   const accountHref = isLoggedIn ? '/konto' : '/login';
-  const accountShortLabel = isLoggedIn ? 'Bereich' : 'Login';
+  const accountShortLabel = isLoggedIn ? layoutText.accountShort : layoutText.login;
   const authButtons = isLoggedIn
-    ? `<a class="button button-secondary header-account-link" href="/konto">Mein Bereich</a>`
-    : `<a class="button button-secondary header-account-link" href="/login">Login</a><a class="button button-primary header-register-link" href="/register">Registrieren</a>`;
+    ? `<a class="button button-secondary header-account-link" href="/konto">${esc(layoutText.myArea)}</a>`
+    : `<a class="button button-secondary header-account-link" href="/login">${esc(layoutText.login)}</a><a class="button button-primary header-register-link" href="/register">${esc(layoutText.register)}</a>`;
   const drawerAuthLinks = isLoggedIn
-    ? `<a class="sidebar-link sidebar-link-highlight" href="/konto">Mein Bereich</a>`
-    : `<a class="sidebar-link sidebar-link-highlight" href="/login">Login</a><a class="sidebar-link" href="/register">Registrieren</a>`;
+    ? `<a class="sidebar-link sidebar-link-highlight" href="/konto">${esc(layoutText.myArea)}</a>`
+    : `<a class="sidebar-link sidebar-link-highlight" href="/login">${esc(layoutText.login)}</a><a class="sidebar-link" href="/register">${esc(layoutText.register)}</a>`;
   return `<!DOCTYPE html>
   <html lang="${esc(safeLocale)}">
   <head>
@@ -656,18 +791,19 @@ function layout({ title, body, metaDescription = '', currentUser = null, locale 
       <div class="sidebar-header">
         <div>
           <strong>Playcollect</strong>
-          <p class="muted">Schnellzugriff für Sammler, Suche und Sammlung.</p>
+          <p class="muted">${esc(layoutText.sidebarIntro)}</p>
         </div>
         <button class="sidebar-close" type="button" aria-label="Menü schließen" data-sidebar-close>×</button>
       </div>
       <nav class="sidebar-nav" aria-label="Seitenleiste">
-        <a class="sidebar-link" href="${homeHref}">Startseite</a>
-        <a class="sidebar-link" href="${searchHref}">Suche</a>
-        <a class="sidebar-link" href="${catalogHref}">Katalog</a>
-        <a class="sidebar-link" href="${themesHref}">Themenwelten</a>
+        <a class="sidebar-link" href="${homeHref}">${esc(layoutText.navHome)}</a>
+        <a class="sidebar-link" href="${searchHref}">${esc(layoutText.navSearch)}</a>
+        <a class="sidebar-link" href="${catalogHref}">${esc(layoutText.navCatalog)}</a>
+        <a class="sidebar-link" href="${themesHref}">${esc(layoutText.navThemes)}</a>
         ${drawerAuthLinks}
-        <a class="sidebar-link" href="${legalHref}">Rechtlicher Hinweis</a>
+        <a class="sidebar-link" href="${legalHref}">${esc(layoutText.navLegal)}</a>
       </nav>
+      ${localeSwitcherMobile}
     </aside>
     <header class="site-header">
       <div class="container header-inner">
@@ -675,37 +811,38 @@ function layout({ title, body, metaDescription = '', currentUser = null, locale 
           <button class="nav-toggle" type="button" aria-label="Menü öffnen" data-sidebar-open>☰</button>
           <a class="brand" href="${homeHref}">
             <img class="brand-logo" src="/static/logo-playcollect.svg" alt="Playcollect Logo">
-            <span>Playcollect<small>Für Playmobil-Liebhaber & Sammler</small></span>
+            <span>Playcollect<small>${esc(layoutText.brandSubline)}</small></span>
           </a>
         </div>
         <nav class="nav nav-desktop" aria-label="Hauptnavigation">
-          <a href="${homeHref}">Start</a>
-          <a href="${searchHref}">Suche</a>
-          <a href="${catalogHref}">Katalog</a>
-          <a href="${themesHref}">Themenwelten</a>
+          <a href="${homeHref}">${esc(layoutText.navHome)}</a>
+          <a href="${searchHref}">${esc(layoutText.navSearch)}</a>
+          <a href="${catalogHref}">${esc(layoutText.navCatalog)}</a>
+          <a href="${themesHref}">${esc(layoutText.navThemes)}</a>
         </nav>
         <div class="header-actions">
+          ${localeSwitcher}
           ${authButtons}
         </div>
       </div>
     </header>
     ${body}
     <nav class="sticky-footer-nav" aria-label="Schnellnavigation unten">
-      <a href="${homeHref}">Start</a>
-      <a href="${searchHref}">Suche</a>
-      <a href="${catalogHref}">Katalog</a>
-      <a href="${themesHref}">Themen</a>
-      <a href="${accountHref}">${accountShortLabel}</a>
+      <a href="${homeHref}">${esc(layoutText.navHome)}</a>
+      <a href="${searchHref}">${esc(layoutText.navSearch)}</a>
+      <a href="${catalogHref}">${esc(layoutText.navCatalog)}</a>
+      <a href="${themesHref}">${esc(layoutText.quickThemes)}</a>
+      <a href="${accountHref}">${esc(accountShortLabel)}</a>
     </nav>
     <footer class="footer">
       <div class="container footer-panel">
         <div>
           <strong>Playcollect</strong>
-          <p class="muted" style="margin:8px 0 0; max-width:780px;">Playcollect ist eine unabhängige Sammler- und Entdeckerplattform für Playmobil-Liebhaber. Wir gehören nicht zur geobra Brandstätter Stiftung & Co. KG und stehen in keiner offiziellen Verbindung zur Marke PLAYMOBIL.</p>
+          <p class="muted" style="margin:8px 0 0; max-width:780px;">${esc(layoutText.footerAbout)}</p>
         </div>
         <div class="hero-actions footer-actions" style="margin:0; gap:12px;">
-          <a class="button button-secondary" href="${legalHref}">Rechtlicher Hinweis</a>
-          <a class="button button-secondary" href="${themesHref}">Themenwelten</a>
+          <a class="button button-secondary" href="${legalHref}">${esc(layoutText.navLegal)}</a>
+          <a class="button button-secondary" href="${themesHref}">${esc(layoutText.navThemes)}</a>
         </div>
       </div>
     </footer>
@@ -1173,6 +1310,51 @@ function renderSetCard(set, options = {}) {
 app.get('/', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
+    const homeText = locale === 'en'
+      ? {
+          eyebrow: 'Your world for Playmobil sets & collector pieces',
+          heading: 'Playcollect for Playmobil lovers, collectors, and explorers.',
+          lead: 'Browse Playmobil sets, themed worlds, and collector pieces in one place. Explore the catalog, discover new favorites, and build your own collection step by step.',
+          usersChip: 'collectors are already here',
+          imageVisible: 'Product images visible',
+          imageHidden: 'Product images currently hidden',
+          discover: 'Discover sets now',
+          registerFree: 'Register for free',
+          themesHeader: 'What collectors can explore right now',
+          themesText: 'Here you can jump into the themed worlds with the strongest current set coverage — ideal for browsing, comparing, and rediscovering older favorites.',
+          previewHeader: 'Current sets to browse',
+          previewText: 'This selection shows which sets are already available in the Playcollect catalog — ideal for discovering, collecting, and saving to your wishlist.',
+        }
+      : locale === 'fr'
+        ? {
+            eyebrow: 'Ton univers pour les sets et pièces de collection Playmobil',
+            heading: 'Playcollect pour les fans, collectionneurs et explorateurs Playmobil.',
+            lead: 'Retrouve de nombreux sets Playmobil, univers thématiques et pièces de collection au même endroit. Parcours le catalogue, découvre de nouveaux favoris et construis ta collection pas à pas.',
+            usersChip: 'collectionneurs sont déjà là',
+            imageVisible: 'Images produit visibles',
+            imageHidden: 'Images produit actuellement masquées',
+            discover: 'Découvrir les sets',
+            registerFree: 'Inscription gratuite',
+            themesHeader: 'Ce que les collectionneurs peuvent explorer maintenant',
+            themesText: 'Tu peux ici accéder aux univers thématiques les mieux fournis en sets — idéal pour parcourir, comparer et redécouvrir d’anciens favoris.',
+            previewHeader: 'Sets actuels à parcourir',
+            previewText: 'Cette sélection montre quels sets sont déjà présents dans le catalogue Playcollect — idéal pour découvrir, collectionner et enregistrer dans ta wishlist.',
+          }
+        : {
+            eyebrow: 'Deine Welt für Playmobil-Sets & Sammlerstücke',
+            heading: 'Playcollect für Playmobil-Liebhaber, Sammler und Entdecker.',
+            lead: 'Hier findest du bereits viele Playmobil-Sets, Themenwelten und Sammlerstücke auf einen Blick. Stöbere durch den Katalog, entdecke neue Lieblingssets und baue dir Schritt für Schritt deine eigene Sammlung auf.',
+            usersChip: 'Sammler sind schon dabei',
+            imageVisible: 'Produktbilder sichtbar',
+            imageHidden: 'Produktbilder aktuell ausgeblendet',
+            discover: 'Jetzt Sets entdecken',
+            registerFree: 'Kostenlos registrieren',
+            themesHeader: 'Was Sammler gerade entdecken können',
+            themesText: 'Hier findest du die Themenwelten, in denen bereits viele passende Sets hinterlegt sind – perfekt zum Stöbern, Vergleichen und Wiederentdecken alter Lieblingsreihen.',
+            previewHeader: 'Aktuelle Sets zum Stöbern',
+            previewText: 'Diese Auswahl zeigt dir direkt, welche Sets gerade im Playcollect-Katalog hinterlegt sind – ideal zum Entdecken, Sammeln und Merken für die eigene Wunschliste.',
+          };
     const [counts, latestSetsRes, themeCountsRes] = await Promise.all([
       pool.query(`
         SELECT
@@ -1224,21 +1406,21 @@ app.get('/', async (req, res, next) => {
         <section class="hero">
           <div class="container hero-grid">
             <div class="hero-copy">
-              <span class="eyebrow">Deine Welt für Playmobil-Sets & Sammlerstücke</span>
-              <h1>Playcollect für Playmobil-Liebhaber, Sammler und Entdecker.</h1>
-              <p class="lead">Hier findest du bereits viele Playmobil-Sets, Themenwelten und Sammlerstücke auf einen Blick. Stöbere durch den Katalog, entdecke neue Lieblingssets und baue dir Schritt für Schritt deine eigene Sammlung auf.</p>
+              <span class="eyebrow">${esc(homeText.eyebrow)}</span>
+              <h1>${esc(homeText.heading)}</h1>
+              <p class="lead">${esc(homeText.lead)}</p>
               <div class="hero-chips">
                 <span>${esc(c.set_count)} Sets entdeckt</span>
                 <span>${esc(c.theme_count)} Themenwelten</span>
                 <span>${esc(c.image_count)} Bilder im Katalog</span>
-                <span>${esc(c.user_count)} Sammler sind schon dabei</span>
-                <span>${SHOW_CATALOG_IMAGES ? 'Produktbilder sichtbar' : 'Produktbilder aktuell ausgeblendet'}</span>
+                <span>${esc(c.user_count)} ${esc(homeText.usersChip)}</span>
+                <span>${SHOW_CATALOG_IMAGES ? esc(homeText.imageVisible) : esc(homeText.imageHidden)}</span>
               </div>
               <div class="hero-actions">
-                <a class="button button-primary" href="${routePath('search', locale)}">Jetzt Sets entdecken</a>
-                <a class="button button-secondary" href="${routePath('catalog', locale)}">Katalog öffnen</a>
-                <a class="button button-secondary" href="${routePath('themes', locale)}">Themenwelten ansehen</a>
-                <a class="button button-secondary" href="/register">Kostenlos registrieren</a>
+                <a class="button button-primary" href="${routePath('search', locale)}">${esc(homeText.discover)}</a>
+                <a class="button button-secondary" href="${routePath('catalog', locale)}">${esc(copy.common.openCatalog)}</a>
+                <a class="button button-secondary" href="${routePath('themes', locale)}">${esc(copy.common.openThemes)}</a>
+                <a class="button button-secondary" href="/register">${esc(homeText.registerFree)}</a>
               </div>
             </div>
             <div class="hero-visual">
@@ -1271,16 +1453,16 @@ app.get('/', async (req, res, next) => {
         </section>
         <section class="section">
           <div class="container section-header">
-            <div><span class="eyebrow">Beliebte Themenwelten</span><h2>Was Sammler gerade entdecken können</h2></div>
-            <p>Hier findest du die Themenwelten, in denen bereits viele passende Sets hinterlegt sind – perfekt zum Stöbern, Vergleichen und Wiederentdecken alter Lieblingsreihen.</p>
+            <div><span class="eyebrow">${esc(copy.layout.navThemes)}</span><h2>${esc(homeText.themesHeader)}</h2></div>
+            <p>${esc(homeText.themesText)}</p>
           </div>
           <div class="container feature-grid">
             ${themeCounts.map(row => `
               <article class="feature-card glass-card">
-                <span class="kicker">Themenwelt</span>
+                <span class="kicker">${esc(copy.common.themeLabel)}</span>
                 <h3><a class="theme-link" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">${esc(row.name)}</a></h3>
-                <p>${esc(row.set_count)} Sets warten hier aktuell auf Sammler und Entdecker.</p>
-                <a class="button button-soft" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">Themenwelt öffnen</a>
+                <p>${esc(row.set_count)} ${esc(copy.common.sets)} warten hier aktuell auf Sammler und Entdecker.</p>
+                <a class="button button-soft" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">${esc(copy.common.openThemes)}</a>
               </article>`).join('')}
           </div>
         </section>
@@ -1310,6 +1492,7 @@ app.get('/', async (req, res, next) => {
 app.get('/themenwelten', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
     const themesRes = await pool.query(`
       SELECT t.id,
              t.slug,
@@ -1332,15 +1515,35 @@ app.get('/themenwelten', async (req, res, next) => {
 
     const totalThemes = themes.length;
     const totalSets = themes.reduce((sum, row) => sum + Number(row.set_count || 0), 0);
+    const themesPageText = locale === 'en'
+      ? {
+          eyebrow: 'Explore themes',
+          heading: 'All themed worlds at a glance',
+          intro: 'Get a clear overview of all imported themed worlds, including how many sets are currently assigned to each one.',
+          openTheme: 'Open theme',
+        }
+      : locale === 'fr'
+        ? {
+            eyebrow: 'Découvrir les thèmes',
+            heading: 'Tous les univers thématiques en un coup d’œil',
+            intro: 'Obtiens une vue claire de tous les univers thématiques importés, avec le nombre de sets actuellement attribués à chacun.',
+            openTheme: 'Ouvrir le thème',
+          }
+        : {
+            eyebrow: 'Themenwelten entdecken',
+            heading: 'Alle Themenwelten im Überblick',
+            intro: 'Hier bekommst du eine saubere Übersicht aller importierten Themenwelten inklusive Anzahl der hinterlegten Sets. Von hier springst du direkt auf die jeweilige Themenwelt-Seite mit den passenden Sets.',
+            openTheme: 'Themenwelt öffnen',
+          };
     const body = `
       <main>
         <section class="search-hero catalog-hero">
           <div class="container">
-            <span class="eyebrow">Themenwelten entdecken</span>
+            <span class="eyebrow">${esc(themesPageText.eyebrow)}</span>
             <div class="search-head">
               <div>
-                <h1 style="font-size:56px; line-height:1; margin:16px 0 12px; letter-spacing:-.04em">Alle Themenwelten im Überblick</h1>
-                <p class="muted" style="font-size:18px; max-width:860px; line-height:1.7">Hier bekommst du eine saubere Übersicht aller importierten Themenwelten inklusive Anzahl der hinterlegten Sets. Von hier springst du direkt auf die jeweilige Themenwelt-Seite mit den passenden Sets.</p>
+                <h1 style="font-size:56px; line-height:1; margin:16px 0 12px; letter-spacing:-.04em">${esc(themesPageText.heading)}</h1>
+                <p class="muted" style="font-size:18px; max-width:860px; line-height:1.7">${esc(themesPageText.intro)}</p>
               </div>
               <div class="catalog-meta-stack">
                 <div class="preview-note">${esc(totalThemes)} Themenwelten</div>
@@ -1348,8 +1551,8 @@ app.get('/themenwelten', async (req, res, next) => {
               </div>
             </div>
             <div class="catalog-actions">
-              <a class="button button-primary" href="${routePath('catalog', locale)}">Katalog öffnen</a>
-              <a class="button button-secondary" href="${routePath('search', locale)}">Suche öffnen</a>
+              <a class="button button-primary" href="${routePath('catalog', locale)}">${esc(copy.common.openCatalog)}</a>
+              <a class="button button-secondary" href="${routePath('search', locale)}">${esc(copy.common.openSearch)}</a>
             </div>
           </div>
         </section>
@@ -1357,7 +1560,7 @@ app.get('/themenwelten', async (req, res, next) => {
           <div class="container feature-grid">
             ${themes.map((row) => `
               <article class="feature-card glass-card">
-                <span class="kicker">Themenwelt</span>
+                <span class="kicker">${esc(copy.common.themeLabel)}</span>
                 <h3><a class="theme-link" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">${esc(row.name)}</a></h3>
                 <p>${esc(row.set_count)} Sets · ${esc(row.image_count)} Bilder zum Entdecken.</p>
                 <div class="status-row theme-status-row">
@@ -1365,7 +1568,7 @@ app.get('/themenwelten', async (req, res, next) => {
                   <span class="status-green">${esc(row.image_count)} Bilder</span>
                 </div>
                 <div class="card-actions">
-                  <a class="button button-soft" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">Themenwelt öffnen</a>
+                  <a class="button button-soft" href="${themeUrl(row.internal_slug || row.slug, locale, { publicSlug: row.slug })}">${esc(themesPageText.openTheme)}</a>
                 </div>
               </article>`).join('')}
           </div>
@@ -1387,6 +1590,7 @@ app.get('/themenwelten', async (req, res, next) => {
 app.get('/themenwelten/:slug', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
     const requestedSlug = String(req.params.slug || '').trim();
     const q = String(req.query.q || '').trim();
     const year = String(req.query.year || '').trim();
@@ -1510,9 +1714,9 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
               ${content.highlights.map((item) => `<span class="status-orange">${esc(item)}</span>`).join('')}
             </div>
             <div class="catalog-actions">
-              <a class="button button-primary" href="${routePath('search', locale, {}, { theme: theme.slug })}">In Suche filtern</a>
-              <a class="button button-secondary" href="${routePath('themes', locale)}">Alle Themenwelten</a>
-              <a class="button button-secondary" href="${routePath('catalog', locale)}">Katalog öffnen</a>
+              <a class="button button-primary" href="${routePath('search', locale, {}, { theme: theme.slug })}">${esc(locale === 'en' ? 'Filter in search' : locale === 'fr' ? 'Filtrer dans la recherche' : 'In Suche filtern')}</a>
+              <a class="button button-secondary" href="${routePath('themes', locale)}">${esc(copy.common.allThemes)}</a>
+              <a class="button button-secondary" href="${routePath('catalog', locale)}">${esc(copy.common.openCatalog)}</a>
             </div>
           </div>
         </section>
@@ -1523,15 +1727,15 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
           </div>
           <div class="container">
             <form class="search-toolbar" method="get" action="${themeUrl(theme.internal_slug || theme.slug, locale, { publicSlug: theme.slug })}">
-              <div class="filter-box search-shell"><span>🔎</span><input name="q" placeholder="Nach Name, Beschreibung oder Setnummer suchen" value="${esc(q)}"></div>
+              <div class="filter-box search-shell"><span>🔎</span><input name="q" placeholder="${esc(copy.common.searchPlaceholder)}" value="${esc(q)}"></div>
               <div class="filter-box">
                 <select class="filter-select" name="year">
-                  <option value="">Alle Jahrgänge</option>
+                  <option value="">${esc(copy.common.allYears)}</option>
                   ${yearsRes.rows.map((row) => `<option value="${esc(row.release_year)}" ${String(row.release_year) === year ? 'selected' : ''}>${esc(row.release_year)}</option>`).join('')}
                 </select>
               </div>
-              <button class="button button-primary" type="submit">Filter anwenden</button>
-              <a class="button button-secondary" href="${themeUrl(theme.internal_slug || theme.slug, locale, { publicSlug: theme.slug })}">Zurücksetzen</a>
+              <button class="button button-primary" type="submit">${esc(copy.common.applyFilters)}</button>
+              <a class="button button-secondary" href="${themeUrl(theme.internal_slug || theme.slug, locale, { publicSlug: theme.slug })}">${esc(copy.common.reset)}</a>
             </form>
           </div>
           <div class="container ${setsRes.rowCount ? 'results-grid' : ''}">
@@ -1563,6 +1767,7 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
 app.get('/katalog', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
     const page = parsePageNumber(req.query.page);
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS total FROM catalog_sets`);
     const totalSets = totalRes.rows[0]?.total || 0;
@@ -1590,34 +1795,69 @@ app.get('/katalog', async (req, res, next) => {
     );
 
     const pageLinks = [];
+    const catalogText = locale === 'en'
+      ? {
+          eyebrow: 'Collector-friendly catalog overview',
+          heading: 'Playmobil catalog at a glance',
+          intro: 'See which sets are already available in the Playcollect catalog. Ideal for browsing by set number, favorite series, and older collector pieces.',
+          priceFields: 'Price fields for launch price & market value active',
+          prev: '← Previous page',
+          next: 'Next page →',
+          pageLabel: `Page ${currentPage} of ${totalPages} · ${totalSets} sets total · ${CATALOG_PAGE_SIZE} per page`,
+          visibleImages: 'Product images visible',
+          hiddenImages: 'Product images currently hidden',
+        }
+      : locale === 'fr'
+        ? {
+            eyebrow: 'Vue catalogue pensée pour les collectionneurs',
+            heading: 'Catalogue Playmobil en un coup d’œil',
+            intro: 'Vois rapidement quels sets sont déjà présents dans le catalogue Playcollect. Idéal pour parcourir les numéros de set, séries favorites et pièces plus anciennes.',
+            priceFields: 'Champs prix d’origine & valeur de marché actifs',
+            prev: '← Page précédente',
+            next: 'Page suivante →',
+            pageLabel: `Page ${currentPage} sur ${totalPages} · ${totalSets} sets au total · ${CATALOG_PAGE_SIZE} par page`,
+            visibleImages: 'Images produit visibles',
+            hiddenImages: 'Images produit actuellement masquées',
+          }
+        : {
+            eyebrow: 'Sammlerfreundliche Katalogübersicht',
+            heading: 'Playmobil-Katalog im Überblick',
+            intro: 'Hier siehst du schnell, welche Sets bereits im Playcollect-Katalog hinterlegt sind. Ideal zum Stöbern nach Setnummern, Lieblingsreihen und älteren Sammlerstücken.',
+            priceFields: 'Preisfelder für Einführungspreis & Marktwert aktiv',
+            prev: '← Vorherige Seite',
+            next: 'Nächste Seite →',
+            pageLabel: `Seite ${currentPage} von ${totalPages} · ${totalSets} Sets gesamt · ${CATALOG_PAGE_SIZE} pro Seite`,
+            visibleImages: 'Produktbilder sichtbar',
+            hiddenImages: 'Produktbilder aktuell ausgeblendet',
+          };
     if (currentPage > 1) {
-      pageLinks.push(`<a class="button button-secondary" href="${routePath('catalog', locale, {}, { page: currentPage - 1 })}">← Vorherige Seite</a>`);
+      pageLinks.push(`<a class="button button-secondary" href="${routePath('catalog', locale, {}, { page: currentPage - 1 })}">${esc(catalogText.prev)}</a>`);
     }
-    pageLinks.push(`<span class="preview-note">Seite ${currentPage} von ${totalPages} · ${totalSets} Sets gesamt · ${CATALOG_PAGE_SIZE} pro Seite</span>`);
+    pageLinks.push(`<span class="preview-note">${esc(catalogText.pageLabel)}</span>`);
     if (currentPage < totalPages) {
-      pageLinks.push(`<a class="button button-secondary" href="${routePath('catalog', locale, {}, { page: currentPage + 1 })}">Nächste Seite →</a>`);
+      pageLinks.push(`<a class="button button-secondary" href="${routePath('catalog', locale, {}, { page: currentPage + 1 })}">${esc(catalogText.next)}</a>`);
     }
 
     const body = `
       <main>
         <section class="search-hero catalog-hero">
           <div class="container">
-            <span class="eyebrow">Sammlerfreundliche Katalogübersicht</span>
+            <span class="eyebrow">${esc(catalogText.eyebrow)}</span>
             <div class="search-head">
               <div>
-                <h1 style="font-size:56px; line-height:1; margin:16px 0 12px; letter-spacing:-.04em">Playmobil-Katalog im Überblick</h1>
-                <p class="muted" style="font-size:18px; max-width:860px; line-height:1.7">Hier siehst du schnell, welche Sets bereits im Playcollect-Katalog hinterlegt sind. Ideal zum Stöbern nach Setnummern, Lieblingsreihen und älteren Sammlerstücken.</p>
+                <h1 style="font-size:56px; line-height:1; margin:16px 0 12px; letter-spacing:-.04em">${esc(catalogText.heading)}</h1>
+                <p class="muted" style="font-size:18px; max-width:860px; line-height:1.7">${esc(catalogText.intro)}</p>
               </div>
               <div class="catalog-meta-stack">
                 <div class="preview-note">${totalSets} importierte Sets</div>
-                <div class="preview-note">${SHOW_CATALOG_IMAGES ? 'Produktbilder sichtbar' : 'Produktbilder aktuell ausgeblendet'}</div>
-                <div class="preview-note">Preisfelder für Einführungspreis & Marktwert aktiv</div>
+                <div class="preview-note">${SHOW_CATALOG_IMAGES ? esc(catalogText.visibleImages) : esc(catalogText.hiddenImages)}</div>
+                <div class="preview-note">${esc(catalogText.priceFields)}</div>
               </div>
             </div>
             <div class="catalog-actions">
-              <a class="button button-primary" href="${routePath('search', locale)}">Suche öffnen</a>
-              <a class="button button-secondary" href="${routePath('themes', locale)}">Themenwelten ansehen</a>
-              <a class="button button-secondary" href="${routePath('home', locale)}">Zur Startseite</a>
+              <a class="button button-primary" href="${routePath('search', locale)}">${esc(copy.common.openSearch)}</a>
+              <a class="button button-secondary" href="${routePath('themes', locale)}">${esc(copy.common.openThemes)}</a>
+              <a class="button button-secondary" href="${routePath('home', locale)}">${esc(copy.common.backHome)}</a>
             </div>
           </div>
         </section>
@@ -1629,14 +1869,14 @@ app.get('/katalog', async (req, res, next) => {
                 <table class="catalog-table">
                   <thead>
                     <tr>
-                      <th>Setnummer</th>
-                      <th>Name</th>
-                      <th>Themenwelt</th>
-                      <th>Jahr</th>
-                      <th>Einführungspreis</th>
-                      <th>Marktwert</th>
-                      <th>Bilder</th>
-                      <th>Detail</th>
+                      <th>${esc(locale === 'en' ? 'Set number' : locale === 'fr' ? 'Numéro de set' : 'Setnummer')}</th>
+                      <th>${esc(locale === 'en' ? 'Name' : locale === 'fr' ? 'Nom' : 'Name')}</th>
+                      <th>${esc(copy.common.themeLabel)}</th>
+                      <th>${esc(locale === 'en' ? 'Year' : locale === 'fr' ? 'Année' : 'Jahr')}</th>
+                      <th>${esc(locale === 'en' ? 'Launch price' : locale === 'fr' ? 'Prix d’origine' : 'Einführungspreis')}</th>
+                      <th>${esc(locale === 'en' ? 'Market value' : locale === 'fr' ? 'Valeur de marché' : 'Marktwert')}</th>
+                      <th>${esc(locale === 'en' ? 'Images' : locale === 'fr' ? 'Images' : 'Bilder')}</th>
+                      <th>${esc(locale === 'en' ? 'Detail' : locale === 'fr' ? 'Détail' : 'Detail')}</th>
                     </tr>
                   </thead>
 <tbody>
@@ -1680,6 +1920,7 @@ app.get('/katalog', async (req, res, next) => {
 app.get('/search', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
     const q = (req.query.q || '').trim();
     const theme = (req.query.theme || '').trim();
     const normalizedTheme = theme.toLowerCase();
@@ -1748,37 +1989,69 @@ app.get('/search', async (req, res, next) => {
         publicName: row.name,
       }))
       .sort((a, b) => a.publicName.localeCompare(b.publicName, locale === 'de' ? 'de' : 'en'));
+    const searchText = locale === 'en'
+      ? {
+          eyebrow: 'Find sets precisely',
+          heading: 'Search the catalog',
+          intro: 'Search by set name, set number, and description. You can also filter directly by theme to find matching sets faster.',
+          allThemes: 'All themes',
+          start: 'Start search',
+          reset: 'Reset',
+          noResultsTitle: 'No results',
+          noResultsText: 'Try another search term or remove the filter.',
+        }
+      : locale === 'fr'
+        ? {
+            eyebrow: 'Trouver les sets précisément',
+            heading: 'Rechercher dans le catalogue',
+            intro: 'La recherche couvre le nom du set, le numéro de set et la description. Tu peux aussi filtrer directement par thème.',
+            allThemes: 'Tous les thèmes',
+            start: 'Lancer la recherche',
+            reset: 'Réinitialiser',
+            noResultsTitle: 'Aucun résultat',
+            noResultsText: 'Essaie un autre terme ou retire le filtre.',
+          }
+        : {
+            eyebrow: 'Sets gezielt finden',
+            heading: 'Katalog durchsuchen',
+            intro: 'Suchbar sind aktuell Setname, Setnummer und Beschreibung. Zusätzlich kannst du direkt nach Themenwelten filtern und so schneller passende Sets für deine Sammlung finden.',
+            allThemes: 'Alle Themenwelten',
+            start: 'Suche starten',
+            reset: 'Zurücksetzen',
+            noResultsTitle: 'Keine Treffer',
+            noResultsText: 'Versuche einen anderen Suchbegriff oder entferne den Filter.',
+          };
     const body = `
       <main>
         <section class="search-hero">
           <div class="container">
-            <span class="eyebrow">Sets gezielt finden</span>
+            <span class="eyebrow">${esc(searchText.eyebrow)}</span>
             <div class="search-head">
               <div>
-                <h1 style="font-size:56px; line-height:1; margin:16px 0 12px; letter-spacing:-.04em">Katalog durchsuchen</h1>
-                <p class="muted" style="font-size:18px; max-width:860px; line-height:1.7">Suchbar sind aktuell Setname, Setnummer und Beschreibung. Zusätzlich kannst du direkt nach Themenwelten filtern und so schneller passende Sets für deine Sammlung finden.</p>
+                <h1 style="font-size:56px; line-height:1; margin:16px 0 12px; letter-spacing:-.04em">${esc(searchText.heading)}</h1>
+                <p class="muted" style="font-size:18px; max-width:860px; line-height:1.7">${esc(searchText.intro)}</p>
               </div>
-              <div class="preview-note">${setsRes.rowCount} Treffer</div>
+              <div class="preview-note">${setsRes.rowCount} ${esc(copy.common.hits)}</div>
             </div>
             <form class="search-toolbar" method="get" action="${routePath('search', locale)}">
-              <div class="filter-box search-shell"><span>🔎</span><input name="q" placeholder="z. B. Pirat, 70955 oder Museum" value="${esc(q)}"></div>
+              <div class="filter-box search-shell"><span>🔎</span><input name="q" placeholder="${esc(copy.common.searchPlaceholder)}" value="${esc(q)}"></div>
               <div class="filter-box">
                 <select class="filter-select" name="theme">
-                  <option value="">Alle Themenwelten</option>
+                  <option value="">${esc(searchText.allThemes)}</option>
                   ${themeOptions.map((row) => {
                     const isSelected = row.publicSlug === normalizedTheme || row.name === theme || row.slug === theme;
                     return `<option value="${esc(row.publicSlug)}" ${isSelected ? 'selected' : ''}>${esc(row.publicName)}</option>`;
                   }).join('')}
                 </select>
               </div>
-              <button class="button button-primary" type="submit">Suche starten</button>
-              <a class="button button-secondary" href="${routePath('search', locale)}">Zurücksetzen</a>
+              <button class="button button-primary" type="submit">${esc(searchText.start)}</button>
+              <a class="button button-secondary" href="${routePath('search', locale)}">${esc(searchText.reset)}</a>
             </form>
           </div>
         </section>
         <section class="section" style="padding-top:10px">
           <div class="container ${setsRes.rowCount ? 'results-grid' : ''}">
-            ${setsRes.rowCount ? setsRes.rows.map((set) => renderSetCard(set, { locale })).join('') : `<article class="panel glass-card"><h3>Keine Treffer</h3><p class="muted">Versuche einen anderen Suchbegriff oder entferne den Filter.</p></article>`}
+            ${setsRes.rowCount ? setsRes.rows.map((set) => renderSetCard(set, { locale })).join('') : `<article class="panel glass-card"><h3>${esc(searchText.noResultsTitle)}</h3><p class="muted">${esc(searchText.noResultsText)}</p></article>`}
           </div>
         </section>
       </main>`;
@@ -1801,6 +2074,7 @@ app.get('/search', async (req, res, next) => {
 app.get('/sets/:setNumber', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
     const setNumber = String(req.params.setNumber || '').trim();
     const setRes = await pool.query(
       `SELECT s.id, s.set_number, s.slug, COALESCE(st_req.name, st_de.name, s.name) AS name, s.release_year, s.category_label,
@@ -2050,7 +2324,7 @@ app.get('/sets/:setNumber', async (req, res, next) => {
                     <p>${esc(imageKinds.join(' · '))}</p>
                   </article>
                   <article class="panel glass-card">
-                    <span class="kicker">Themenwelt</span>
+                    <span class="kicker">${esc(copy.common.themeLabel)}</span>
                     <h3>${setThemeLink}</h3>
                     <p>${themeSetCount} weitere Sets warten in dieser Themenwelt auf dich und lassen sich direkt weiter entdecken.</p>
                   </article>
@@ -3201,18 +3475,39 @@ app.get('/sitemap-:locale.xml', async (req, res, next) => {
 
 app.get('/hinweis-playmobil', async (req, res) => {
   const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+  const copy = getLocaleCopy(locale);
+  const legalText = locale === 'en'
+    ? {
+        eyebrow: 'Legal notice',
+        heading: 'Playcollect is an independent collector platform',
+        intro1: 'Playcollect is built for Playmobil fans, collectors, and everyone who wants to explore older and newer sets comfortably. The platform exists to collect, organize, and contextualize sets and has no official connection to the PLAYMOBIL brand.',
+        intro2: 'PLAYMOBIL is a trademark of geobra Brandstätter Stiftung & Co. KG. The brand name is used only to describe and classify the sets shown for collectors and interested fans.',
+      }
+    : locale === 'fr'
+      ? {
+          eyebrow: 'Mention légale',
+          heading: 'Playcollect est une plateforme indépendante pour collectionneurs',
+          intro1: 'Playcollect s’adresse aux fans et collectionneurs Playmobil ainsi qu’à toutes les personnes qui souhaitent découvrir facilement des sets anciens et récents. La plateforme sert à organiser, retrouver et contextualiser les sets et n’a aucun lien officiel avec la marque PLAYMOBIL.',
+          intro2: 'PLAYMOBIL est une marque de geobra Brandstätter Stiftung & Co. KG. Le nom de la marque est utilisé uniquement pour décrire et classer les sets présentés pour les collectionneurs et les personnes intéressées.',
+        }
+      : {
+          eyebrow: 'Rechtlicher Hinweis',
+          heading: 'Playcollect ist eine unabhängige Sammlerplattform',
+          intro1: 'Playcollect richtet sich an Playmobil-Liebhaber, Sammler und alle, die ältere wie neue Sets bequem entdecken möchten. Die Plattform dient der Sammlung, Übersicht und Einordnung von Sets und steht in keiner offiziellen Verbindung zur Marke PLAYMOBIL.',
+          intro2: 'PLAYMOBIL ist eine Marke der geobra Brandstätter Stiftung & Co. KG. Die Nennung der Marke erfolgt ausschließlich zur Beschreibung und Einordnung der gezeigten Sets für Sammler und Interessierte.',
+        };
   const body = `
     <main>
       <section class="section">
         <div class="container">
           <article class="panel glass-card" style="max-width:920px; margin:0 auto;">
-            <span class="eyebrow">Rechtlicher Hinweis</span>
-            <h1>Playcollect ist eine unabhängige Sammlerplattform</h1>
-            <p class="muted" style="font-size:18px; line-height:1.8;">Playcollect richtet sich an Playmobil-Liebhaber, Sammler und alle, die ältere wie neue Sets bequem entdecken möchten. Die Plattform dient der Sammlung, Übersicht und Einordnung von Sets und steht in keiner offiziellen Verbindung zur Marke PLAYMOBIL.</p>
-            <p class="muted" style="font-size:18px; line-height:1.8;">PLAYMOBIL ist eine Marke der geobra Brandstätter Stiftung & Co. KG. Die Nennung der Marke erfolgt ausschließlich zur Beschreibung und Einordnung der gezeigten Sets für Sammler und Interessierte.</p>
+            <span class="eyebrow">${esc(legalText.eyebrow)}</span>
+            <h1>${esc(legalText.heading)}</h1>
+            <p class="muted" style="font-size:18px; line-height:1.8;">${esc(legalText.intro1)}</p>
+            <p class="muted" style="font-size:18px; line-height:1.8;">${esc(legalText.intro2)}</p>
             <div class="hero-actions">
-              <a class="button button-primary" href="${routePath('home', locale)}">Zur Startseite</a>
-              <a class="button button-secondary" href="${routePath('catalog', locale)}">Zum Katalog</a>
+              <a class="button button-primary" href="${routePath('home', locale)}">${esc(copy.common.backHome)}</a>
+              <a class="button button-secondary" href="${routePath('catalog', locale)}">${esc(copy.common.openCatalog)}</a>
             </div>
           </article>
         </div>
