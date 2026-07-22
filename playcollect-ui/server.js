@@ -30,6 +30,8 @@ const pool = new Pool({
 
 const SHOW_CATALOG_IMAGES = String(process.env.PLAYCOLLECT_SHOW_CATALOG_IMAGES || '1') !== '0';
 const CATALOG_PAGE_SIZE = 500;
+const SUPPORTED_LOCALES = ['de', 'en', 'fr'];
+const DEFAULT_LOCALE = 'de';
 const SESSION_COOKIE_NAME = 'playcollect_session';
 const PREVIEW_GATE_COOKIE_NAME = 'playcollect_preview_gate';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -45,6 +47,39 @@ const INVENTORY_IMPORT_ADMIN_EMAILS = new Set(
     .filter(Boolean)
 );
 const loginAttempts = new Map();
+
+const ROUTE_PATHS = {
+  de: {
+    home: '/',
+    search: '/search',
+    catalog: '/katalog',
+    themes: '/themenwelten',
+    themeDetail: '/themenwelten/:slug',
+    setDetail: '/sets/:setNumber',
+    setCollect: '/sets/:setNumber/collect',
+    legalPlaymobil: '/hinweis-playmobil',
+  },
+  en: {
+    home: '/en',
+    search: '/en/search',
+    catalog: '/en/catalog',
+    themes: '/en/themes',
+    themeDetail: '/en/themes/:slug',
+    setDetail: '/en/sets/:setNumber',
+    setCollect: '/en/sets/:setNumber/collect',
+    legalPlaymobil: '/en/playmobil-notice',
+  },
+  fr: {
+    home: '/fr',
+    search: '/fr/recherche',
+    catalog: '/fr/catalogue',
+    themes: '/fr/themes',
+    themeDetail: '/fr/themes/:slug',
+    setDetail: '/fr/sets/:setNumber',
+    setCollect: '/fr/sets/:setNumber/collect',
+    legalPlaymobil: '/fr/mention-playmobil',
+  },
+};
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -181,6 +216,114 @@ function clearLoginFailures(req) {
   loginAttempts.delete(getClientIp(req));
 }
 
+function normalizeLocale(locale = DEFAULT_LOCALE) {
+  const normalized = String(locale || '').trim().toLowerCase();
+  return SUPPORTED_LOCALES.includes(normalized) ? normalized : DEFAULT_LOCALE;
+}
+
+function isDefaultLocale(locale = DEFAULT_LOCALE) {
+  return normalizeLocale(locale) === DEFAULT_LOCALE;
+}
+
+function detectLocaleFromPath(pathname = '/') {
+  const normalizedPath = String(pathname || '/');
+  for (const locale of SUPPORTED_LOCALES) {
+    if (locale === DEFAULT_LOCALE) continue;
+    if (normalizedPath === `/${locale}` || normalizedPath.startsWith(`/${locale}/`)) {
+      return locale;
+    }
+  }
+  return DEFAULT_LOCALE;
+}
+
+function hasExplicitDefaultLocalePrefix(pathname = '/') {
+  const normalizedPath = String(pathname || '/');
+  return normalizedPath === `/${DEFAULT_LOCALE}` || normalizedPath.startsWith(`/${DEFAULT_LOCALE}/`);
+}
+
+function stripLocalePrefixFromPath(pathname = '/', locale = DEFAULT_LOCALE) {
+  const normalizedPath = String(pathname || '/');
+  const normalizedLocale = normalizeLocale(locale);
+  if (isDefaultLocale(normalizedLocale)) {
+    if (hasExplicitDefaultLocalePrefix(normalizedPath)) {
+      const stripped = normalizedPath.slice(`/${DEFAULT_LOCALE}`.length);
+      return stripped || '/';
+    }
+    return normalizedPath || '/';
+  }
+  if (normalizedPath === `/${normalizedLocale}`) return '/';
+  if (normalizedPath.startsWith(`/${normalizedLocale}/`)) {
+    return normalizedPath.slice(`/${normalizedLocale}`.length) || '/';
+  }
+  return normalizedPath || '/';
+}
+
+function stripLocalePrefixFromUrl(url = '/', locale = DEFAULT_LOCALE) {
+  const [pathnamePart, queryPart] = String(url || '/').split('?');
+  const strippedPath = stripLocalePrefixFromPath(pathnamePart || '/', locale);
+  return queryPart ? `${strippedPath}?${queryPart}` : strippedPath;
+}
+
+function matchRoutePattern(pattern, pathname) {
+  const keys = [];
+  const regexSource = String(pattern || '/')
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/:([A-Za-z0-9_]+)/g, (_, key) => {
+      keys.push(key);
+      return '([^/]+)';
+    });
+  const regex = new RegExp(`^${regexSource}/?$`);
+  const match = String(pathname || '/').match(regex);
+  if (!match) return null;
+  const params = {};
+  keys.forEach((key, index) => {
+    params[key] = decodeURIComponent(match[index + 1] || '');
+  });
+  return params;
+}
+
+function canonicalizeLocalizedPath(pathname = '/', locale = DEFAULT_LOCALE) {
+  const normalizedLocale = normalizeLocale(locale);
+  const normalizedPath = String(pathname || '/');
+  if (isDefaultLocale(normalizedLocale)) {
+    return stripLocalePrefixFromPath(normalizedPath, DEFAULT_LOCALE);
+  }
+
+  const routeKeys = ['setCollect', 'setDetail', 'themeDetail', 'themes', 'search', 'catalog', 'legalPlaymobil', 'home'];
+  for (const routeKey of routeKeys) {
+    const localizedPattern = ROUTE_PATHS[normalizedLocale]?.[routeKey];
+    const canonicalPattern = ROUTE_PATHS[DEFAULT_LOCALE]?.[routeKey];
+    if (!localizedPattern || !canonicalPattern) continue;
+    const params = matchRoutePattern(localizedPattern, normalizedPath);
+    if (!params) continue;
+    return fillRouteParams(canonicalPattern, params);
+  }
+
+  return stripLocalePrefixFromPath(normalizedPath, normalizedLocale);
+}
+
+function fillRouteParams(pattern, params = {}) {
+  return String(pattern || '/').replace(/:([A-Za-z0-9_]+)/g, (_, key) => encodeURIComponent(params[key] ?? ''));
+}
+
+function buildQueryString(query = null) {
+  if (!query || typeof query !== 'object') return '';
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') continue;
+    params.append(key, String(value));
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function routePath(routeKey, locale = DEFAULT_LOCALE, params = {}, query = null) {
+  const normalizedLocale = normalizeLocale(locale);
+  const routes = ROUTE_PATHS[normalizedLocale] || ROUTE_PATHS[DEFAULT_LOCALE];
+  const pattern = routes[routeKey] || ROUTE_PATHS[DEFAULT_LOCALE][routeKey] || '/';
+  return `${fillRouteParams(pattern, params)}${buildQueryString(query)}`;
+}
+
 function canAccessInventoryImport(user) {
   return Boolean(user && user.id);
 }
@@ -290,6 +433,24 @@ async function loadCurrentUser(req, res, next) {
 }
 
 app.use(loadCurrentUser);
+app.use((req, res, next) => {
+  const locale = detectLocaleFromPath(req.path);
+  req.locale = locale;
+  req.localePrefix = isDefaultLocale(locale) ? '' : `/${locale}`;
+  req.localePath = canonicalizeLocalizedPath(req.path, locale);
+
+  if (hasExplicitDefaultLocalePrefix(req.path)) {
+    res.redirect(301, stripLocalePrefixFromUrl(req.originalUrl, DEFAULT_LOCALE));
+    return;
+  }
+
+  if (!isDefaultLocale(locale)) {
+    const [pathnamePart, queryPart] = String(req.url || '/').split('?');
+    const canonicalPath = canonicalizeLocalizedPath(pathnamePart || '/', locale);
+    req.url = queryPart ? `${canonicalPath}?${queryPart}` : canonicalPath;
+  }
+  next();
+});
 
 app.get('/zugang', (req, res) => {
   if (hasPreviewGateAccess(req)) {
@@ -331,11 +492,16 @@ app.use((req, res, next) => {
   }));
 });
 
-function layout({ title, body, metaDescription = '', currentUser = null }) {
+function layout({ title, body, metaDescription = '', currentUser = null, locale = DEFAULT_LOCALE }) {
   const safeDescription = String(metaDescription || '').trim();
+  const safeLocale = normalizeLocale(locale);
   const isLoggedIn = Boolean(currentUser && currentUser.id);
+  const homeHref = routePath('home', safeLocale);
+  const searchHref = routePath('search', safeLocale);
+  const catalogHref = routePath('catalog', safeLocale);
+  const themesHref = routePath('themes', safeLocale);
+  const legalHref = routePath('legalPlaymobil', safeLocale);
   const accountHref = isLoggedIn ? '/konto' : '/login';
-  const accountLabel = isLoggedIn ? 'Mein Bereich' : 'Login';
   const accountShortLabel = isLoggedIn ? 'Bereich' : 'Login';
   const authButtons = isLoggedIn
     ? `<a class="button button-secondary header-account-link" href="/konto">Mein Bereich</a>`
@@ -344,7 +510,7 @@ function layout({ title, body, metaDescription = '', currentUser = null }) {
     ? `<a class="sidebar-link sidebar-link-highlight" href="/konto">Mein Bereich</a>`
     : `<a class="sidebar-link sidebar-link-highlight" href="/login">Login</a><a class="sidebar-link" href="/register">Registrieren</a>`;
   return `<!DOCTYPE html>
-  <html lang="de">
+  <html lang="${esc(safeLocale)}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -363,28 +529,28 @@ function layout({ title, body, metaDescription = '', currentUser = null }) {
         <button class="sidebar-close" type="button" aria-label="Menü schließen" data-sidebar-close>×</button>
       </div>
       <nav class="sidebar-nav" aria-label="Seitenleiste">
-        <a class="sidebar-link" href="/">Startseite</a>
-        <a class="sidebar-link" href="/search">Suche</a>
-        <a class="sidebar-link" href="/katalog">Katalog</a>
-        <a class="sidebar-link" href="/themenwelten">Themenwelten</a>
+        <a class="sidebar-link" href="${homeHref}">Startseite</a>
+        <a class="sidebar-link" href="${searchHref}">Suche</a>
+        <a class="sidebar-link" href="${catalogHref}">Katalog</a>
+        <a class="sidebar-link" href="${themesHref}">Themenwelten</a>
         ${drawerAuthLinks}
-        <a class="sidebar-link" href="/hinweis-playmobil">Rechtlicher Hinweis</a>
+        <a class="sidebar-link" href="${legalHref}">Rechtlicher Hinweis</a>
       </nav>
     </aside>
     <header class="site-header">
       <div class="container header-inner">
         <div class="header-start">
           <button class="nav-toggle" type="button" aria-label="Menü öffnen" data-sidebar-open>☰</button>
-          <a class="brand" href="/">
+          <a class="brand" href="${homeHref}">
             <img class="brand-logo" src="/static/logo-playcollect.svg" alt="Playcollect Logo">
             <span>Playcollect<small>Für Playmobil-Liebhaber & Sammler</small></span>
           </a>
         </div>
         <nav class="nav nav-desktop" aria-label="Hauptnavigation">
-          <a href="/">Start</a>
-          <a href="/search">Suche</a>
-          <a href="/katalog">Katalog</a>
-          <a href="/themenwelten">Themenwelten</a>
+          <a href="${homeHref}">Start</a>
+          <a href="${searchHref}">Suche</a>
+          <a href="${catalogHref}">Katalog</a>
+          <a href="${themesHref}">Themenwelten</a>
         </nav>
         <div class="header-actions">
           ${authButtons}
@@ -393,10 +559,10 @@ function layout({ title, body, metaDescription = '', currentUser = null }) {
     </header>
     ${body}
     <nav class="sticky-footer-nav" aria-label="Schnellnavigation unten">
-      <a href="/">Start</a>
-      <a href="/search">Suche</a>
-      <a href="/katalog">Katalog</a>
-      <a href="/themenwelten">Themen</a>
+      <a href="${homeHref}">Start</a>
+      <a href="${searchHref}">Suche</a>
+      <a href="${catalogHref}">Katalog</a>
+      <a href="${themesHref}">Themen</a>
       <a href="${accountHref}">${accountShortLabel}</a>
     </nav>
     <footer class="footer">
@@ -406,8 +572,8 @@ function layout({ title, body, metaDescription = '', currentUser = null }) {
           <p class="muted" style="margin:8px 0 0; max-width:780px;">Playcollect ist eine unabhängige Sammler- und Entdeckerplattform für Playmobil-Liebhaber. Wir gehören nicht zur geobra Brandstätter Stiftung & Co. KG und stehen in keiner offiziellen Verbindung zur Marke PLAYMOBIL.</p>
         </div>
         <div class="hero-actions footer-actions" style="margin:0; gap:12px;">
-          <a class="button button-secondary" href="/hinweis-playmobil">Rechtlicher Hinweis</a>
-          <a class="button button-secondary" href="/themenwelten">Themenwelten</a>
+          <a class="button button-secondary" href="${legalHref}">Rechtlicher Hinweis</a>
+          <a class="button button-secondary" href="${themesHref}">Themenwelten</a>
         </div>
       </div>
     </footer>
@@ -457,8 +623,8 @@ function layout({ title, body, metaDescription = '', currentUser = null }) {
   </html>`;
 }
 
-function setDetailUrl(setNumber) {
-  return `/sets/${encodeURIComponent(setNumber)}`;
+function setDetailUrl(setNumber, locale = DEFAULT_LOCALE) {
+  return routePath('setDetail', locale, { setNumber });
 }
 
 function publicThemeSlug(themeSlug) {
@@ -469,9 +635,9 @@ function publicThemeName(themeName, themeSlug) {
   return themeSlug === 'unbekannt' ? 'Sonstige' : themeName;
 }
 
-function themeUrl(themeSlug) {
+function themeUrl(themeSlug, locale = DEFAULT_LOCALE) {
   const publicSlug = publicThemeSlug(themeSlug);
-  return publicSlug ? `/themenwelten/${encodeURIComponent(publicSlug)}` : '/themenwelten';
+  return publicSlug ? routePath('themeDetail', locale, { slug: publicSlug }) : routePath('themes', locale);
 }
 
 function renderThemeLink(themeName, themeSlug, options = {}) {
@@ -479,7 +645,8 @@ function renderThemeLink(themeName, themeSlug, options = {}) {
   const label = publicThemeName(themeName || fallback, themeSlug) || fallback;
   if (!themeName || !themeSlug) return esc(label);
   const classAttr = options.className ? ` class="${esc(options.className)}"` : '';
-  return `<a${classAttr} href="${themeUrl(themeSlug)}">${esc(label)}</a>`;
+  const locale = normalizeLocale(options.locale || DEFAULT_LOCALE);
+  return `<a${classAttr} href="${themeUrl(themeSlug, locale)}">${esc(label)}</a>`;
 }
 
 const THEME_SEO_COPY = {
@@ -727,13 +894,14 @@ function renderConditionOptions(selectedValue = '') {
     .join('');
 }
 
-function renderSetCard(set) {
+function renderSetCard(set, options = {}) {
+  const locale = normalizeLocale(options.locale || DEFAULT_LOCALE);
   const image = getCatalogImageUrl(set.primary_image_url);
   const desc = set.description ? esc(set.description.slice(0, 180)) : 'Noch keine Beschreibung hinterlegt.';
-  const detailUrl = setDetailUrl(set.set_number);
+  const detailUrl = setDetailUrl(set.set_number, locale);
   return `
     <article class="result-card glass-card">
-      <div class="topline"><span>Set ${esc(set.set_number)}</span><span class="badge">${renderThemeLink(set.theme_name, set.theme_slug)}</span></div>
+      <div class="topline"><span>Set ${esc(set.set_number)}</span><span class="badge">${renderThemeLink(set.theme_name, set.theme_slug, { locale })}</span></div>
       <a class="card-image-link" href="${detailUrl}">
         <img src="${esc(image)}" alt="${esc(set.name)}" loading="lazy">
       </a>
@@ -743,7 +911,7 @@ function renderSetCard(set) {
       </div>
       <div class="status-row">
         ${set.release_year ? `<span class="status-blue">${esc(set.release_year)}</span>` : ''}
-        <span class="status-orange">${renderThemeLink(set.theme_name, set.theme_slug)}</span>
+        <span class="status-orange">${renderThemeLink(set.theme_name, set.theme_slug, { locale })}</span>
         <span class="status-green">${esc(set.image_count)} Bild${set.image_count === 1 ? '' : 'er'}</span>
       </div>
       <div class="card-actions">
@@ -754,6 +922,7 @@ function renderSetCard(set) {
 
 app.get('/', async (req, res, next) => {
   try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const [counts, latestSets, themeCounts] = await Promise.all([
       pool.query(`
         SELECT
@@ -808,9 +977,9 @@ app.get('/', async (req, res, next) => {
                 <span>${SHOW_CATALOG_IMAGES ? 'Produktbilder sichtbar' : 'Produktbilder aktuell ausgeblendet'}</span>
               </div>
               <div class="hero-actions">
-                <a class="button button-primary" href="/search">Jetzt Sets entdecken</a>
-                <a class="button button-secondary" href="/katalog">Katalog öffnen</a>
-                <a class="button button-secondary" href="/themenwelten">Themenwelten ansehen</a>
+                <a class="button button-primary" href="${routePath('search', locale)}">Jetzt Sets entdecken</a>
+                <a class="button button-secondary" href="${routePath('catalog', locale)}">Katalog öffnen</a>
+                <a class="button button-secondary" href="${routePath('themes', locale)}">Themenwelten ansehen</a>
                 <a class="button button-secondary" href="/register">Kostenlos registrieren</a>
               </div>
             </div>
@@ -819,12 +988,12 @@ app.get('/', async (req, res, next) => {
                 <div class="app-screen">
                   <div class="app-topbar"><strong>Playcollect Katalog</strong><span class="badge">Für Sammler gemacht</span></div>
                   <div class="app-content">
-                    <form class="search-shell" action="/search" method="get">
+                    <form class="search-shell" action="${routePath('search', locale)}" method="get">
                       <span>🔎</span>
                       <input name="q" value="Pirat" aria-label="Katalog durchsuchen">
                     </form>
                     <div class="set-grid">
-                      ${latestSets.rows.slice(0, 2).map(renderSetCard).join('')}
+                      ${latestSets.rows.slice(0, 2).map((set) => renderSetCard(set, { locale })).join('')}
                     </div>
                   </div>
                 </div>
@@ -851,9 +1020,9 @@ app.get('/', async (req, res, next) => {
             ${themeCounts.rows.map(row => `
               <article class="feature-card glass-card">
                 <span class="kicker">Themenwelt</span>
-                <h3><a class="theme-link" href="${themeUrl(row.slug)}">${esc(publicThemeName(row.name, row.slug))}</a></h3>
+                <h3><a class="theme-link" href="${themeUrl(row.slug, locale)}">${esc(publicThemeName(row.name, row.slug))}</a></h3>
                 <p>${esc(row.set_count)} Sets warten hier aktuell auf Sammler und Entdecker.</p>
-                <a class="button button-soft" href="${themeUrl(row.slug)}">Themenwelt öffnen</a>
+                <a class="button button-soft" href="${themeUrl(row.slug, locale)}">Themenwelt öffnen</a>
               </article>`).join('')}
           </div>
         </section>
@@ -863,11 +1032,11 @@ app.get('/', async (req, res, next) => {
             <p>Diese Auswahl zeigt dir direkt, welche Sets gerade im Playcollect-Katalog hinterlegt sind – ideal zum Entdecken, Sammeln und Merken für die eigene Wunschliste.</p>
           </div>
           <div class="container results-grid">
-            ${latestSets.rows.map(renderSetCard).join('')}
+            ${latestSets.rows.map((set) => renderSetCard(set, { locale })).join('')}
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: 'Playcollect – Für Playmobil-Liebhaber', body, currentUser: req.currentUser }));
+    res.send(layout({ title: 'Playcollect – Für Playmobil-Liebhaber', body, currentUser: req.currentUser, locale }));
   } catch (err) {
     next(err);
   }
@@ -875,6 +1044,7 @@ app.get('/', async (req, res, next) => {
 
 app.get('/themenwelten', async (req, res, next) => {
   try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const themesRes = await pool.query(`
       SELECT t.slug,
              t.name,
@@ -908,8 +1078,8 @@ app.get('/themenwelten', async (req, res, next) => {
               </div>
             </div>
             <div class="catalog-actions">
-              <a class="button button-primary" href="/katalog">Katalog öffnen</a>
-              <a class="button button-secondary" href="/search">Suche öffnen</a>
+              <a class="button button-primary" href="${routePath('catalog', locale)}">Katalog öffnen</a>
+              <a class="button button-secondary" href="${routePath('search', locale)}">Suche öffnen</a>
             </div>
           </div>
         </section>
@@ -918,20 +1088,20 @@ app.get('/themenwelten', async (req, res, next) => {
             ${themesRes.rows.map((row) => `
               <article class="feature-card glass-card">
                 <span class="kicker">Themenwelt</span>
-                <h3><a class="theme-link" href="${themeUrl(row.slug)}">${esc(publicThemeName(row.name, row.slug))}</a></h3>
+                <h3><a class="theme-link" href="${themeUrl(row.slug, locale)}">${esc(publicThemeName(row.name, row.slug))}</a></h3>
                 <p>${esc(row.set_count)} Sets · ${esc(row.image_count)} Bilder zum Entdecken.</p>
                 <div class="status-row theme-status-row">
                   <span class="status-orange">${esc(row.set_count)} Sets</span>
                   <span class="status-green">${esc(row.image_count)} Bilder</span>
                 </div>
                 <div class="card-actions">
-                  <a class="button button-soft" href="${themeUrl(row.slug)}">Themenwelt öffnen</a>
+                  <a class="button button-soft" href="${themeUrl(row.slug, locale)}">Themenwelt öffnen</a>
                 </div>
               </article>`).join('')}
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: 'Playcollect – Themenwelten', body, currentUser: req.currentUser }));
+    res.send(layout({ title: 'Playcollect – Themenwelten', body, currentUser: req.currentUser, locale }));
   } catch (err) {
     next(err);
   }
@@ -939,6 +1109,7 @@ app.get('/themenwelten', async (req, res, next) => {
 
 app.get('/themenwelten/:slug', async (req, res, next) => {
   try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const slug = String(req.params.slug || '').trim();
     const dbThemeSlug = slug === 'sonstige' ? 'unbekannt' : slug;
     const q = String(req.query.q || '').trim();
@@ -962,7 +1133,7 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
     `, [dbThemeSlug]);
 
     if (!themeRes.rowCount) {
-      res.status(404).send(layout({ title: 'Themenwelt nicht gefunden', body: `<main class="section"><div class="container"><article class="panel glass-card"><h1>Themenwelt nicht gefunden</h1><p class="muted">Für diese Themenwelt gibt es aktuell keinen Eintrag.</p><div class="hero-actions"><a class="button button-primary" href="/themenwelten">Zur Themenwelten-Übersicht</a></div></article></div></main>`, currentUser: req.currentUser }));
+      res.status(404).send(layout({ title: 'Themenwelt nicht gefunden', body: `<main class="section"><div class="container"><article class="panel glass-card"><h1>Themenwelt nicht gefunden</h1><p class="muted">Für diese Themenwelt gibt es aktuell keinen Eintrag.</p><div class="hero-actions"><a class="button button-primary" href="${routePath('themes', locale)}">Zur Themenwelten-Übersicht</a></div></article></div></main>`, currentUser: req.currentUser, locale }));
       return;
     }
 
@@ -1047,9 +1218,9 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
               ${content.highlights.map((item) => `<span class="status-orange">${esc(item)}</span>`).join('')}
             </div>
             <div class="catalog-actions">
-              <a class="button button-primary" href="/search?theme=${encodeURIComponent(theme.slug)}">In Suche filtern</a>
-              <a class="button button-secondary" href="/themenwelten">Alle Themenwelten</a>
-              <a class="button button-secondary" href="/katalog">Katalog öffnen</a>
+              <a class="button button-primary" href="${routePath('search', locale, {}, { theme: theme.slug })}">In Suche filtern</a>
+              <a class="button button-secondary" href="${routePath('themes', locale)}">Alle Themenwelten</a>
+              <a class="button button-secondary" href="${routePath('catalog', locale)}">Katalog öffnen</a>
             </div>
           </div>
         </section>
@@ -1059,7 +1230,7 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
             <p>${filterSummary}</p>
           </div>
           <div class="container">
-            <form class="search-toolbar" method="get" action="${themeUrl(theme.slug)}">
+            <form class="search-toolbar" method="get" action="${themeUrl(theme.slug, locale)}">
               <div class="filter-box search-shell"><span>🔎</span><input name="q" placeholder="Nach Name, Beschreibung oder Setnummer suchen" value="${esc(q)}"></div>
               <div class="filter-box">
                 <select class="filter-select" name="year">
@@ -1068,15 +1239,15 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
                 </select>
               </div>
               <button class="button button-primary" type="submit">Filter anwenden</button>
-              <a class="button button-secondary" href="${themeUrl(theme.slug)}">Zurücksetzen</a>
+              <a class="button button-secondary" href="${themeUrl(theme.slug, locale)}">Zurücksetzen</a>
             </form>
           </div>
           <div class="container ${setsRes.rowCount ? 'results-grid' : ''}">
-            ${setsRes.rowCount ? setsRes.rows.map(renderSetCard).join('') : `<article class="panel glass-card"><h3>Keine Treffer</h3><p class="muted">Für diese Filterkombination wurden in ${esc(theme.name)} aktuell keine Sets gefunden.</p></article>`}
+            ${setsRes.rowCount ? setsRes.rows.map((set) => renderSetCard(set, { locale })).join('') : `<article class="panel glass-card"><h3>Keine Treffer</h3><p class="muted">Für diese Filterkombination wurden in ${esc(theme.name)} aktuell keine Sets gefunden.</p></article>`}
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: content.seoTitle, metaDescription: content.seoDescription, body, currentUser: req.currentUser }));
+    res.send(layout({ title: content.seoTitle, metaDescription: content.seoDescription, body, currentUser: req.currentUser, locale }));
   } catch (err) {
     next(err);
   }
@@ -1084,6 +1255,7 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
 
 app.get('/katalog', async (req, res, next) => {
   try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const page = parsePageNumber(req.query.page);
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS total FROM catalog_sets`);
     const totalSets = totalRes.rows[0]?.total || 0;
@@ -1106,11 +1278,11 @@ app.get('/katalog', async (req, res, next) => {
 
     const pageLinks = [];
     if (currentPage > 1) {
-      pageLinks.push(`<a class="button button-secondary" href="/katalog?page=${currentPage - 1}">← Vorherige Seite</a>`);
+      pageLinks.push(`<a class="button button-secondary" href="${routePath('catalog', locale, {}, { page: currentPage - 1 })}">← Vorherige Seite</a>`);
     }
     pageLinks.push(`<span class="preview-note">Seite ${currentPage} von ${totalPages} · ${totalSets} Sets gesamt · ${CATALOG_PAGE_SIZE} pro Seite</span>`);
     if (currentPage < totalPages) {
-      pageLinks.push(`<a class="button button-secondary" href="/katalog?page=${currentPage + 1}">Nächste Seite →</a>`);
+      pageLinks.push(`<a class="button button-secondary" href="${routePath('catalog', locale, {}, { page: currentPage + 1 })}">Nächste Seite →</a>`);
     }
 
     const body = `
@@ -1130,9 +1302,9 @@ app.get('/katalog', async (req, res, next) => {
               </div>
             </div>
             <div class="catalog-actions">
-              <a class="button button-primary" href="/search">Suche öffnen</a>
-              <a class="button button-secondary" href="/themenwelten">Themenwelten ansehen</a>
-              <a class="button button-secondary" href="/">Zur Startseite</a>
+              <a class="button button-primary" href="${routePath('search', locale)}">Suche öffnen</a>
+              <a class="button button-secondary" href="${routePath('themes', locale)}">Themenwelten ansehen</a>
+              <a class="button button-secondary" href="${routePath('home', locale)}">Zur Startseite</a>
             </div>
           </div>
         </section>
@@ -1159,14 +1331,14 @@ app.get('/katalog', async (req, res, next) => {
                       const pricing = extractPricingMetadata(set.metadata);
                       return `
                       <tr>
-                        <td class="catalog-set-number"><a href="${setDetailUrl(set.set_number)}">${esc(set.set_number)}</a></td>
-                        <td><a class="catalog-name-link" href="${setDetailUrl(set.set_number)}">${esc(set.name)}</a></td>
-                        <td>${renderThemeLink(set.theme_name, set.theme_slug, { fallback: '–', className: 'theme-link' })}</td>
+                        <td class="catalog-set-number"><a href="${setDetailUrl(set.set_number, locale)}">${esc(set.set_number)}</a></td>
+                        <td><a class="catalog-name-link" href="${setDetailUrl(set.set_number, locale)}">${esc(set.name)}</a></td>
+                        <td>${renderThemeLink(set.theme_name, set.theme_slug, { fallback: '–', className: 'theme-link', locale })}</td>
                         <td>${set.release_year ? esc(set.release_year) : '–'}</td>
                         <td>${esc(formatMoneyFromCents(pricing.introductionPriceCents))}</td>
                         <td>${esc(formatMoneyFromCents(pricing.estimatedMarketValueCents))}</td>
                         <td>${esc(set.image_count)}</td>
-                        <td><a class="button button-soft button-small" href="${setDetailUrl(set.set_number)}">Ansehen</a></td>
+                        <td><a class="button button-soft button-small" href="${setDetailUrl(set.set_number, locale)}">Ansehen</a></td>
                       </tr>`;
                     }).join('')}
                   </tbody>
@@ -1177,7 +1349,7 @@ app.get('/katalog', async (req, res, next) => {
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: `Playcollect – Katalog Seite ${currentPage}`, body, currentUser: req.currentUser }));
+    res.send(layout({ title: `Playcollect – Katalog Seite ${currentPage}`, body, currentUser: req.currentUser, locale }));
   } catch (err) {
     next(err);
   }
@@ -1185,6 +1357,7 @@ app.get('/katalog', async (req, res, next) => {
 
 app.get('/search', async (req, res, next) => {
   try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const q = (req.query.q || '').trim();
     const theme = (req.query.theme || '').trim();
     const normalizedTheme = theme.toLowerCase();
@@ -1249,7 +1422,7 @@ app.get('/search', async (req, res, next) => {
               </div>
               <div class="preview-note">${setsRes.rowCount} Treffer</div>
             </div>
-            <form class="search-toolbar" method="get" action="/search">
+            <form class="search-toolbar" method="get" action="${routePath('search', locale)}">
               <div class="filter-box search-shell"><span>🔎</span><input name="q" placeholder="z. B. Pirat, 70955 oder Museum" value="${esc(q)}"></div>
               <div class="filter-box">
                 <select class="filter-select" name="theme">
@@ -1261,17 +1434,17 @@ app.get('/search', async (req, res, next) => {
                 </select>
               </div>
               <button class="button button-primary" type="submit">Suche starten</button>
-              <a class="button button-secondary" href="/search">Zurücksetzen</a>
+              <a class="button button-secondary" href="${routePath('search', locale)}">Zurücksetzen</a>
             </form>
           </div>
         </section>
         <section class="section" style="padding-top:10px">
           <div class="container ${setsRes.rowCount ? 'results-grid' : ''}">
-            ${setsRes.rowCount ? setsRes.rows.map(renderSetCard).join('') : `<article class="panel glass-card"><h3>Keine Treffer</h3><p class="muted">Versuche einen anderen Suchbegriff oder entferne den Filter.</p></article>`}
+            ${setsRes.rowCount ? setsRes.rows.map((set) => renderSetCard(set, { locale })).join('') : `<article class="panel glass-card"><h3>Keine Treffer</h3><p class="muted">Versuche einen anderen Suchbegriff oder entferne den Filter.</p></article>`}
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: 'Playcollect – Suche', body, currentUser: req.currentUser }));
+    res.send(layout({ title: 'Playcollect – Suche', body, currentUser: req.currentUser, locale }));
   } catch (err) {
     next(err);
   }
@@ -1279,6 +1452,7 @@ app.get('/search', async (req, res, next) => {
 
 app.get('/sets/:setNumber', async (req, res, next) => {
   try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
     const setNumber = String(req.params.setNumber || '').trim();
     const setRes = await pool.query(
       `SELECT s.id, s.set_number, s.slug, s.name, s.release_year, s.category_label,
@@ -1298,7 +1472,7 @@ app.get('/sets/:setNumber', async (req, res, next) => {
     );
 
     if (!setRes.rowCount) {
-      res.status(404).send(layout({ title: 'Set nicht gefunden', body: `<main class="section"><div class="container"><article class="panel glass-card"><h1>Set nicht gefunden</h1><p class="muted">Für die Setnummer ${esc(setNumber)} gibt es aktuell keinen Datensatz.</p></article></div></main>`, currentUser: req.currentUser }));
+      res.status(404).send(layout({ title: 'Set nicht gefunden', body: `<main class="section"><div class="container"><article class="panel glass-card"><h1>Set nicht gefunden</h1><p class="muted">Für die Setnummer ${esc(setNumber)} gibt es aktuell keinen Datensatz.</p></article></div></main>`, currentUser: req.currentUser, locale }));
       return;
     }
 
@@ -1407,7 +1581,7 @@ app.get('/sets/:setNumber', async (req, res, next) => {
           <span class="kicker">Zur Sammlung hinzufügen</span>
           <h3>Dieses Set direkt sichern</h3>
           <p>Als eingeloggter User kannst du das Set sofort deiner Sammlung oder Wunschliste zuordnen.</p>
-          <form class="register-form compact-form" method="post" action="/sets/${encodeURIComponent(set.set_number)}/collect">
+          <form class="register-form compact-form" method="post" action="${routePath('setCollect', locale, { setNumber: set.set_number })}">
             <label>
               <span>Zielsammlung</span>
               <select name="collection_id" required>
@@ -1429,7 +1603,7 @@ app.get('/sets/:setNumber', async (req, res, next) => {
                     <p>${esc(collectionTypeLabel(row.collection_type))} · ${esc(row.quantity)}x${row.purchase_price_cents === null ? '' : ` · Einkaufspreis ${esc(formatMoneyFromCents(row.purchase_price_cents))}`}</p>
                   </div>
                   <form method="post" action="/collection-items/${encodeURIComponent(row.item_id)}/remove" class="inline-action-form">
-                    <input type="hidden" name="next" value="${esc(setDetailUrl(set.set_number))}">
+                    <input type="hidden" name="next" value="${esc(setDetailUrl(set.set_number, locale))}">
                     <button class="button button-secondary button-small" type="submit">Entfernen</button>
                   </form>
                 </article>
@@ -1443,8 +1617,8 @@ app.get('/sets/:setNumber', async (req, res, next) => {
           <h3>Login nötig für Sammlungsaktionen</h3>
           <p>Lege dir kurz ein Konto an oder logge dich ein. Danach kannst du dieses Set direkt zu „Meine Sammlung“ oder zur Wunschliste hinzufügen.</p>
           <div class="hero-actions detail-actions collection-login-actions">
-            <a class="button button-primary" href="/login?next=${encodeURIComponent(setDetailUrl(set.set_number))}">Einloggen</a>
-            <a class="button button-secondary" href="/register?next=${encodeURIComponent(setDetailUrl(set.set_number))}">Registrieren</a>
+            <a class="button button-primary" href="/login?next=${encodeURIComponent(setDetailUrl(set.set_number, locale))}">Einloggen</a>
+            <a class="button button-secondary" href="/register?next=${encodeURIComponent(setDetailUrl(set.set_number, locale))}">Registrieren</a>
           </div>
         </article>`;
     const body = `
@@ -1469,11 +1643,11 @@ app.get('/sets/:setNumber', async (req, res, next) => {
               ${breadcrumbTrail.length ? `<div class="detail-breadcrumbs">${breadcrumbTrail.map(part => `<span>${esc(part)}</span>`).join('<i>›</i>')}</div>` : ''}
               <span class="eyebrow">Set im Überblick</span>
               <h1 class="detail-title">${esc(set.name)}</h1>
-              <p class="detail-subline">Set ${esc(set.set_number)} · ${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link' })}</p>
+              <p class="detail-subline">Set ${esc(set.set_number)} · ${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link', locale })}</p>
               <div class="inline-stats detail-stats">
                 <span>Setnummer ${esc(set.set_number)}</span>
                 ${set.release_year ? `<span>Jahr ${esc(set.release_year)}</span>` : ''}
-                <span>${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link' })}</span>
+                <span>${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link', locale })}</span>
                 <span>${esc(set.image_count)} Bild${set.image_count === 1 ? '' : 'er'}</span>
               </div>
               <p class="detail-description">${esc(set.description || 'Für dieses Set ist aktuell noch keine Beschreibung importiert.')}</p>
@@ -1506,15 +1680,15 @@ app.get('/sets/:setNumber', async (req, res, next) => {
                   </article>
                   <article class="panel glass-card">
                     <span class="kicker">Themenwelt</span>
-                    <h3>${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link' })}</h3>
+                    <h3>${renderThemeLink(set.theme_name || set.category_label, set.theme_slug, { fallback: 'Playmobil', className: 'theme-link', locale })}</h3>
                     <p>${themeSetCount} weitere Sets warten in dieser Themenwelt auf dich und lassen sich direkt weiter entdecken.</p>
                   </article>
                 </div>
               </div>
               ${addToCollectionPanel}
               <div class="hero-actions detail-actions">
-                <a class="button button-primary" href="/search?q=${encodeURIComponent(set.set_number)}">In der Suche öffnen</a>
-                ${set.theme_name ? `<a class="button button-secondary" href="${themeUrl(set.theme_slug)}">Mehr aus ${esc(set.theme_name)}</a>` : `<a class="button button-secondary" href="/search">Zur Suche</a>`}
+                <a class="button button-primary" href="${routePath('search', locale, {}, { q: set.set_number })}">In der Suche öffnen</a>
+                ${set.theme_name ? `<a class="button button-secondary" href="${themeUrl(set.theme_slug, locale)}">Mehr aus ${esc(set.theme_name)}</a>` : `<a class="button button-secondary" href="${routePath('search', locale)}">Zur Suche</a>`}
                 ${sourceUrl ? `<a class="button button-ghost" href="${esc(sourceUrl)}" target="_blank" rel="nofollow noopener noreferrer">Originalquelle ansehen</a>` : ''}
               </div>
               <div class="detail-meta-grid">
@@ -1538,19 +1712,20 @@ app.get('/sets/:setNumber', async (req, res, next) => {
             <p>So kann die Detailseite direkt in die nächste Entdeckungsrunde führen.</p>
           </div>
           <div class="container ${relatedRes.rowCount ? 'results-grid' : ''}">
-            ${relatedRes.rowCount ? relatedRes.rows.map(renderSetCard).join('') : `<article class="panel glass-card"><h3>Noch keine ähnlichen Sets</h3><p class="muted">Sobald mehr Datensätze in dieser Themenwelt liegen, können wir hier Empfehlungen anzeigen.</p></article>`}
+            ${relatedRes.rowCount ? relatedRes.rows.map((relatedSet) => renderSetCard(relatedSet, { locale })).join('') : `<article class="panel glass-card"><h3>Noch keine ähnlichen Sets</h3><p class="muted">Sobald mehr Datensätze in dieser Themenwelt liegen, können wir hier Empfehlungen anzeigen.</p></article>`}
           </div>
         </section>
       </main>`;
-    res.send(layout({ title: `Playcollect – ${set.name}`, body, currentUser: req.currentUser }));
+    res.send(layout({ title: `Playcollect – ${set.name}`, body, currentUser: req.currentUser, locale }));
   } catch (err) {
     next(err);
   }
 });
 
 app.post('/sets/:setNumber/collect', async (req, res, next) => {
+  const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
   const setNumber = String(req.params.setNumber || '').trim();
-  const returnPath = setDetailUrl(setNumber);
+  const returnPath = setDetailUrl(setNumber, locale);
   const nextAfterLogin = sanitizeNextPath(req.body.next || returnPath, returnPath);
 
   if (!req.currentUser) {
@@ -2607,6 +2782,7 @@ app.get('/users/:username', async (req, res, next) => {
 });
 
 app.get('/hinweis-playmobil', async (req, res) => {
+  const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
   const body = `
     <main>
       <section class="section">
@@ -2617,14 +2793,14 @@ app.get('/hinweis-playmobil', async (req, res) => {
             <p class="muted" style="font-size:18px; line-height:1.8;">Playcollect richtet sich an Playmobil-Liebhaber, Sammler und alle, die ältere wie neue Sets bequem entdecken möchten. Die Plattform dient der Sammlung, Übersicht und Einordnung von Sets und steht in keiner offiziellen Verbindung zur Marke PLAYMOBIL.</p>
             <p class="muted" style="font-size:18px; line-height:1.8;">PLAYMOBIL ist eine Marke der geobra Brandstätter Stiftung & Co. KG. Die Nennung der Marke erfolgt ausschließlich zur Beschreibung und Einordnung der gezeigten Sets für Sammler und Interessierte.</p>
             <div class="hero-actions">
-              <a class="button button-primary" href="/">Zur Startseite</a>
-              <a class="button button-secondary" href="/katalog">Zum Katalog</a>
+              <a class="button button-primary" href="${routePath('home', locale)}">Zur Startseite</a>
+              <a class="button button-secondary" href="${routePath('catalog', locale)}">Zum Katalog</a>
             </div>
           </article>
         </div>
       </section>
     </main>`;
-  res.send(layout({ title: 'Playcollect – Rechtlicher Hinweis', body, metaDescription: 'Rechtlicher Hinweis zu Playcollect als unabhängige Sammlerplattform für Playmobil-Liebhaber.', currentUser: req.currentUser }));
+  res.send(layout({ title: 'Playcollect – Rechtlicher Hinweis', body, metaDescription: 'Rechtlicher Hinweis zu Playcollect als unabhängige Sammlerplattform für Playmobil-Liebhaber.', currentUser: req.currentUser, locale }));
 });
 
 app.use((err, req, res, next) => {
