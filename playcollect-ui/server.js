@@ -590,6 +590,13 @@ function buildPreviewGateLocaleLinks(nextPath = '/', locale = DEFAULT_LOCALE) {
   }));
 }
 
+function renderLocaleMenu(localeSwitcherLinks = [], localeLabel = '', options = {}) {
+  const activeItem = localeSwitcherLinks.find((item) => item.isActive) || localeSwitcherLinks[0] || { label: 'DE' };
+  const className = cleanText(options.className || '');
+  const panelClass = cleanText(options.panelClass || '');
+  return `<details class="locale-menu ${esc(className)}"><summary class="locale-toggle" aria-label="${esc(localeLabel)}"><span class="locale-toggle-label">${esc(activeItem.label)}</span><span class="locale-toggle-icon" aria-hidden="true">▾</span></summary><div class="locale-menu-panel ${esc(panelClass)}">${localeSwitcherLinks.map((item) => `<a href="${esc(item.href)}" class="locale-chip ${item.isActive ? 'is-active' : ''}">${esc(item.label)}</a>`).join('')}</div></details>`;
+}
+
 async function getLocaleSitemapEntries(locale = DEFAULT_LOCALE) {
   const normalizedLocale = normalizeLocale(locale);
   const indexableStaticLocales = new Set([DEFAULT_LOCALE]);
@@ -824,8 +831,8 @@ function layout({ title, body, metaDescription = '', currentUser = null, locale 
   const robots = seo?.robots ? String(seo.robots) : '';
   const alternates = Array.isArray(seo?.alternates) ? seo.alternates : [];
   const localeSwitcherLinks = buildLocaleSwitcherLinks(safeLocale, seo);
-  const localeSwitcher = `<div class="locale-switcher" aria-label="${esc(layoutText.localeLabel)}">${localeSwitcherLinks.map((item) => `<a href="${esc(item.href)}" class="locale-chip ${item.isActive ? 'is-active' : ''}">${esc(item.label)}</a>`).join('')}</div>`;
-  const localeSwitcherMobile = `<div class="sidebar-locale-block"><span class="sidebar-kicker">${esc(layoutText.localeLabel)}</span><div class="locale-switcher locale-switcher-mobile">${localeSwitcherLinks.map((item) => `<a href="${esc(item.href)}" class="locale-chip ${item.isActive ? 'is-active' : ''}">${esc(item.label)}</a>`).join('')}</div></div>`;
+  const localeSwitcher = renderLocaleMenu(localeSwitcherLinks, layoutText.localeLabel);
+  const localeSwitcherMobile = `<div class="sidebar-locale-block"><span class="sidebar-kicker">${esc(layoutText.localeLabel)}</span>${renderLocaleMenu(localeSwitcherLinks, layoutText.localeLabel, { className: 'locale-menu-mobile', panelClass: 'locale-menu-panel-mobile' })}</div>`;
   const isLoggedIn = Boolean(currentUser && currentUser.id);
   const homeHref = routePath('home', safeLocale);
   const searchHref = routePath('search', safeLocale);
@@ -1264,7 +1271,7 @@ function renderPreviewGatePage({ nextPath = '/', error = '', locale = DEFAULT_LO
   const previewText = copy.previewGate || UI_TEXT[DEFAULT_LOCALE].previewGate;
   const safeError = error ? `<div class="form-alert form-error">${esc(error)}</div>` : '';
   const localeSwitcherLinks = buildPreviewGateLocaleLinks(nextPath, safeLocale);
-  const localeSwitcher = `<div class="locale-switcher" aria-label="${esc(layoutText.localeLabel)}">${localeSwitcherLinks.map((item) => `<a href="${esc(item.href)}" class="locale-chip ${item.isActive ? 'is-active' : ''}">${esc(item.label)}</a>`).join('')}</div>`;
+  const localeSwitcher = renderLocaleMenu(localeSwitcherLinks, layoutText.localeLabel);
   return `<!DOCTYPE html>
   <html lang="${esc(safeLocale)}">
   <head>

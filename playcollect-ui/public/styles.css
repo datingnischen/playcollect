@@ -132,17 +132,60 @@ img { max-width: 100%; display: block; }
   align-items: center;
   gap: 12px;
 }
-.locale-switcher {
+.locale-menu {
+  position: relative;
+}
+.locale-menu summary {
+  list-style: none;
+}
+.locale-menu summary::-webkit-details-marker {
+  display: none;
+}
+.locale-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  flex-wrap: wrap;
+  min-width: 74px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(246,248,251,.96);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  cursor: pointer;
+  user-select: none;
+}
+.locale-toggle-icon {
+  color: var(--muted);
+  font-size: 11px;
+  transition: transform .18s ease;
+}
+.locale-menu[open] .locale-toggle-icon {
+  transform: rotate(180deg);
+}
+.locale-menu-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 112px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 18px 46px rgba(19,34,56,.16);
+  z-index: 45;
 }
 .locale-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 64px;
+  width: 100%;
+  min-width: 84px;
   padding: 9px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -214,9 +257,18 @@ img { max-width: 100%; display: block; }
   letter-spacing: .08em;
   text-transform: uppercase;
 }
-.locale-switcher-mobile {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0,1fr));
+.locale-menu-mobile {
+  width: 100%;
+}
+.locale-menu-mobile .locale-toggle {
+  width: 100%;
+  justify-content: space-between;
+}
+.locale-menu-panel-mobile {
+  position: static;
+  min-width: 0;
+  margin-top: 10px;
+  box-shadow: none;
 }
 .sidebar-link {
   display: block;
@@ -1334,7 +1386,8 @@ button.button {
   .header-inner { flex-wrap: wrap; padding: 14px 0; }
   .nav-desktop { display: none; }
   .header-actions { width: 100%; justify-content: space-between; }
-  .locale-switcher { flex: 1; }
+  .locale-menu { flex: 1; }
+  .locale-menu-panel { left: 0; right: auto; }
   .hero { padding-top: 30px; }
   .hero-copy h1 { font-size: 42px; }
   .hero-copy p.lead { font-size: 17px; }
