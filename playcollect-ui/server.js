@@ -57,6 +57,18 @@ const UI_TEXT = {
       footerAbout: 'Playcollect ist eine unabhängige Sammler- und Entdeckerplattform für Playmobil-Liebhaber. Wir gehören nicht zur geobra Brandstätter Stiftung & Co. KG und stehen in keiner offiziellen Verbindung zur Marke PLAYMOBIL.',
       localeLabel: 'Sprache',
     },
+    previewGate: {
+      pageTitle: 'Playcollect – Testzugang',
+      metaDescription: 'Geschützter Testzugang für Playcollect.',
+      badge: 'Testbetrieb',
+      title: 'Playcollect kurz freischalten',
+      intro: 'Die Oberfläche ist im Moment mit einem einfachen Session-Schutz versehen. Nach der Eingabe bist du in diesem Browser nur einmal freigeschaltet.',
+      bio: 'Der Schutz ist bewusst schlank gehalten und eignet sich für den aktuellen Testbetrieb, bis die Plattform regulär offen oder feiner abgesichert werden soll.',
+      passwordLabel: 'Passwort',
+      passwordPlaceholder: 'Testzugang eingeben',
+      submit: 'Zugang öffnen',
+      sessionNote: 'Die Freischaltung wird nur für die aktuelle Browser-Session gespeichert.',
+    },
     common: {
       openCatalog: 'Katalog öffnen',
       openSearch: 'Suche öffnen',
@@ -94,6 +106,18 @@ const UI_TEXT = {
       footerAbout: 'Playcollect is an independent collector and discovery platform for Playmobil fans. We are not affiliated with geobra Brandstätter Stiftung & Co. KG and have no official connection to the PLAYMOBIL brand.',
       localeLabel: 'Language',
     },
+    previewGate: {
+      pageTitle: 'Playcollect – Preview access',
+      metaDescription: 'Protected preview access for Playcollect.',
+      badge: 'Preview mode',
+      title: 'Unlock Playcollect briefly',
+      intro: 'The interface is currently protected by a lightweight session gate. After entering the password, this browser is unlocked once for your session.',
+      bio: 'The protection is intentionally simple for the current preview phase until the platform is opened up or secured in a more granular way.',
+      passwordLabel: 'Password',
+      passwordPlaceholder: 'Enter preview password',
+      submit: 'Open access',
+      sessionNote: 'Access is stored only for the current browser session.',
+    },
     common: {
       openCatalog: 'Open catalog',
       openSearch: 'Open search',
@@ -130,6 +154,18 @@ const UI_TEXT = {
       brandSubline: 'Pour les fans et collectionneurs Playmobil',
       footerAbout: 'Playcollect est une plateforme indépendante de découverte et de collection pour les fans de Playmobil. Nous ne sommes pas affiliés à geobra Brandstätter Stiftung & Co. KG et n’avons aucun lien officiel avec la marque PLAYMOBIL.',
       localeLabel: 'Langue',
+    },
+    previewGate: {
+      pageTitle: 'Playcollect – Accès de prévisualisation',
+      metaDescription: 'Accès de prévisualisation protégé pour Playcollect.',
+      badge: 'Mode aperçu',
+      title: 'Déverrouiller Playcollect rapidement',
+      intro: 'L’interface est actuellement protégée par une simple session. Après saisie du mot de passe, ce navigateur est débloqué une fois pour votre session.',
+      bio: 'Cette protection reste volontairement légère pour la phase de test actuelle, jusqu’à ce que la plateforme soit ouverte ou sécurisée plus finement.',
+      passwordLabel: 'Mot de passe',
+      passwordPlaceholder: 'Saisir le mot de passe de prévisualisation',
+      submit: 'Ouvrir l’accès',
+      sessionNote: 'L’accès est mémorisé uniquement pour la session actuelle du navigateur.',
     },
     common: {
       openCatalog: 'Ouvrir le catalogue',
@@ -524,6 +560,36 @@ function buildLocaleSwitcherLinks(locale = DEFAULT_LOCALE, seo = null) {
   }));
 }
 
+function localizePublicPath(url = '/', targetLocale = DEFAULT_LOCALE) {
+  const normalizedTargetLocale = normalizeLocale(targetLocale);
+  const [pathnamePart, queryPart] = String(url || '/').split('?');
+  const sourceLocale = detectLocaleFromPath(pathnamePart || '/');
+  const canonicalPath = canonicalizeLocalizedPath(pathnamePart || '/', sourceLocale);
+  const routeKeys = ['setCollect', 'setDetail', 'themeDetail', 'themes', 'search', 'catalog', 'legalPlaymobil', 'home'];
+
+  for (const routeKey of routeKeys) {
+    const defaultPattern = ROUTE_PATHS[DEFAULT_LOCALE]?.[routeKey];
+    const localizedPattern = ROUTE_PATHS[normalizedTargetLocale]?.[routeKey];
+    if (!defaultPattern || !localizedPattern) continue;
+    const params = matchRoutePattern(defaultPattern, canonicalPath);
+    if (!params) continue;
+    const localizedPath = fillRouteParams(localizedPattern, buildRouteParams(routeKey, params, normalizedTargetLocale));
+    return queryPart ? `${localizedPath}?${queryPart}` : localizedPath;
+  }
+
+  return queryPart ? `${canonicalPath}?${queryPart}` : canonicalPath;
+}
+
+function buildPreviewGateLocaleLinks(nextPath = '/', locale = DEFAULT_LOCALE) {
+  const labels = getLocaleCopy(locale).locales || getLocaleCopy(DEFAULT_LOCALE).locales;
+  return SUPPORTED_LOCALES.map((entryLocale) => ({
+    locale: entryLocale,
+    label: labels?.[entryLocale] || entryLocale.toUpperCase(),
+    href: `/zugang?next=${encodeURIComponent(localizePublicPath(nextPath, entryLocale))}`,
+    isActive: normalizeLocale(locale) === entryLocale,
+  }));
+}
+
 async function getLocaleSitemapEntries(locale = DEFAULT_LOCALE) {
   const normalizedLocale = normalizeLocale(locale);
   const indexableStaticLocales = new Set([DEFAULT_LOCALE]);
@@ -712,7 +778,9 @@ app.get('/zugang', (req, res) => {
     res.redirect(sanitizeNextPath(req.query.next, '/'));
     return;
   }
-  res.send(renderPreviewGatePage({ nextPath: sanitizeNextPath(req.query.next, '/'), error: req.query.error || '' }));
+  const nextPath = sanitizeNextPath(req.query.next, '/');
+  const locale = detectLocaleFromPath(nextPath);
+  res.send(renderPreviewGatePage({ nextPath, error: req.query.error || '', locale }));
 });
 
 app.post('/zugang', (req, res) => {
@@ -1189,15 +1257,21 @@ function sanitizeNextPath(rawValue, fallback = '/konto') {
   return value;
 }
 
-function renderPreviewGatePage({ nextPath = '/', error = '' }) {
+function renderPreviewGatePage({ nextPath = '/', error = '', locale = DEFAULT_LOCALE }) {
+  const safeLocale = normalizeLocale(locale);
+  const copy = getLocaleCopy(safeLocale);
+  const layoutText = copy.layout;
+  const previewText = copy.previewGate || UI_TEXT[DEFAULT_LOCALE].previewGate;
   const safeError = error ? `<div class="form-alert form-error">${esc(error)}</div>` : '';
+  const localeSwitcherLinks = buildPreviewGateLocaleLinks(nextPath, safeLocale);
+  const localeSwitcher = `<div class="locale-switcher" aria-label="${esc(layoutText.localeLabel)}">${localeSwitcherLinks.map((item) => `<a href="${esc(item.href)}" class="locale-chip ${item.isActive ? 'is-active' : ''}">${esc(item.label)}</a>`).join('')}</div>`;
   return `<!DOCTYPE html>
-  <html lang="de">
+  <html lang="${esc(safeLocale)}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Playcollect – Testzugang</title>
-    <meta name="description" content="Geschützter Testzugang für Playcollect.">
+    <title>${esc(previewText.pageTitle)}</title>
+    <meta name="description" content="${esc(previewText.metaDescription)}">
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
@@ -1210,25 +1284,29 @@ function renderPreviewGatePage({ nextPath = '/', error = '' }) {
               <div class="profile-summary">
                 <div class="profile-avatar">PC</div>
                 <div>
-                  <span class="eyebrow">Testbetrieb</span>
-                  <h1 style="margin:12px 0 6px; font-size:34px; letter-spacing:-.03em;">Playcollect kurz freischalten</h1>
-                  <p class="muted" style="margin:0">Die Oberfläche ist im Moment mit einem einfachen Session-Schutz versehen. Nach der Eingabe bist du in diesem Browser nur einmal freigeschaltet.</p>
+                  <span class="eyebrow">${esc(previewText.badge)}</span>
+                  <h1 style="margin:12px 0 6px; font-size:34px; letter-spacing:-.03em;">${esc(previewText.title)}</h1>
+                  <p class="muted" style="margin:0">${esc(previewText.intro)}</p>
                 </div>
               </div>
             </div>
-            <p class="profile-bio">Der Schutz ist bewusst schlank gehalten und eignet sich für den aktuellen Testbetrieb, bis die Plattform regulär offen oder feiner abgesichert werden soll.</p>
+            <div style="margin:18px 0 0; display:grid; gap:8px;">
+              <span class="eyebrow" style="font-size:12px;">${esc(layoutText.localeLabel)}</span>
+              ${localeSwitcher}
+            </div>
+            <p class="profile-bio">${esc(previewText.bio)}</p>
           </aside>
           <div class="panel glass-card form-panel">
             ${safeError}
             <form class="register-form" method="post" action="/zugang">
               <input type="hidden" name="next" value="${esc(nextPath)}">
               <label>
-                <span>Passwort</span>
-                <input name="password" type="password" required placeholder="Testzugang eingeben" autofocus>
+                <span>${esc(previewText.passwordLabel)}</span>
+                <input name="password" type="password" required placeholder="${esc(previewText.passwordPlaceholder)}" autofocus>
               </label>
-              <button class="button button-primary" type="submit">Zugang öffnen</button>
+              <button class="button button-primary" type="submit">${esc(previewText.submit)}</button>
             </form>
-            <p class="muted" style="margin:16px 0 0;">Die Freischaltung wird nur für die aktuelle Browser-Session gespeichert.</p>
+            <p class="muted" style="margin:16px 0 0;">${esc(previewText.sessionNote)}</p>
           </div>
         </div>
       </section>
