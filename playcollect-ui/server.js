@@ -1672,6 +1672,204 @@ app.get('/themenwelten', async (req, res, next) => {
   }
 });
 
+// Locale-aware route for themes index - English
+app.get('/en/themes', async (req, res, next) => {
+  req.locale = 'en';
+  next();
+}, async (req, res, next) => {
+  try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
+    const themesRes = await pool.query(`
+      SELECT t.id,
+             t.slug,
+             t.name,
+             COUNT(s.id)::int AS set_count,
+             COALESCE(SUM(img_count.cnt), 0)::int AS image_count
+      FROM catalog_themes t
+      LEFT JOIN catalog_sets s ON s.theme_id = t.id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
+      ) img_count ON TRUE
+      GROUP BY t.id, t.slug, t.name
+      HAVING COUNT(s.id) > 0
+      ORDER BY set_count DESC, t.name ASC
+    `);
+    const themes = applyLocaleDataToThemeRows(
+      themesRes.rows,
+      await loadThemeLocaleRows(themesRes.rows.map((row) => row.id), locale)
+    );
+
+    const totalThemes = themes.length;
+    const totalSets = themes.reduce((sum, row) => sum + Number(row.set_count || 0), 0);
+    const themesPageText = locale === 'en'
+      ? {
+          eyebrow: 'Explore themes',
+          heading: 'All themed worlds at a glance',
+          intro: 'Get a clear overview of all imported themed worlds, including how many sets are currently assigned to each one.',
+          openTheme: 'Open theme',
+        }
+      : {
+          eyebrow: 'Themenwelten entdecken',
+          heading: 'Alle Themenwelten im Überblick',
+          intro: 'Hier bekommst du eine saubere Übersicht aller importierten Themenwelten inklusive Anzahl der hinterlegten Sets. Von hier springst du direkt auf die jeweilige Themenwelt-Seite mit den passenden Sets.',
+          openTheme: 'Themenwelt öffnen',
+        };
+    const body = `
+      <main>
+        <section class="search-hero catalog-hero">
+          <div class="container">
+            <article class="hero-content">
+              <p class="eyebrow">${esc(themesPageText.eyebrow)}</p>
+              <h1>${esc(themesPageText.heading)}</h1>
+              <p class="intro-text">${esc(themesPageText.intro)}</p>
+              <p style="margin: 0; font-size: 0.95rem; opacity: 0.8;">
+                <strong>${totalThemes}</strong> ${locale === 'en' ? 'themes' : 'Themenwelten'}
+                &nbsp; ·  &nbsp;
+                <strong>${totalSets}</strong> ${locale === 'en' ? 'sets' : 'Sets'}
+              </p>
+            </article>
+          </div>
+        </section>
+        <section class="catalog-grid-section">
+          <div class="container">
+            <div class="theme-grid">
+              ${themes.map((theme) => `
+                <a href="${routePath('themeDetail', locale, { slug: theme.slug })}" class="theme-card">
+                  <div class="theme-header">
+                    <h2>${esc(theme.name)}</h2>
+                  </div>
+                  <div class="theme-stats">
+                    <span class="stat"><strong>${theme.set_count}</strong> ${locale === 'en' ? 'sets' : 'Sets'}</span>
+                    <span class="stat"><strong>${theme.image_count}</strong> ${locale === 'en' ? 'images' : 'Bilder'}</span>
+                  </div>
+                  <div class="theme-cta">
+                    <span class="button button-small">${esc(themesPageText.openTheme)} →</span>
+                  </div>
+                </a>
+              `).join('')}
+            </div>
+          </div>
+        </section>
+      </main>
+    `;
+
+    res.send(layout({
+      title: `${themesPageText.heading} - ${copy.headerTitle}`,
+      meta: [
+        { name: 'description', content: themesPageText.intro },
+        { name: 'og:title', content: `${themesPageText.heading} - Playcollect` },
+        { name: 'og:description', content: themesPageText.intro },
+        { name: 'og:type', content: 'website' },
+      ],
+      body,
+      currentUser: req.currentUser,
+      locale,
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Locale-aware route for themes index - French
+app.get('/fr/themes', async (req, res, next) => {
+  req.locale = 'fr';
+  next();
+}, async (req, res, next) => {
+  try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
+    const themesRes = await pool.query(`
+      SELECT t.id,
+             t.slug,
+             t.name,
+             COUNT(s.id)::int AS set_count,
+             COALESCE(SUM(img_count.cnt), 0)::int AS image_count
+      FROM catalog_themes t
+      LEFT JOIN catalog_sets s ON s.theme_id = t.id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
+      ) img_count ON TRUE
+      GROUP BY t.id, t.slug, t.name
+      HAVING COUNT(s.id) > 0
+      ORDER BY set_count DESC, t.name ASC
+    `);
+    const themes = applyLocaleDataToThemeRows(
+      themesRes.rows,
+      await loadThemeLocaleRows(themesRes.rows.map((row) => row.id), locale)
+    );
+
+    const totalThemes = themes.length;
+    const totalSets = themes.reduce((sum, row) => sum + Number(row.set_count || 0), 0);
+    const themesPageText = locale === 'fr'
+      ? {
+          eyebrow: 'Découvrir les thèmes',
+          heading: 'Tous les univers thématiques en un coup d'œil',
+          intro: 'Obtiens une vue claire de tous les univers thématiques importés, avec le nombre de sets actuellement attribués à chacun.',
+          openTheme: 'Ouvrir le thème',
+        }
+      : {
+          eyebrow: 'Themenwelten entdecken',
+          heading: 'Alle Themenwelten im Überblick',
+          intro: 'Hier bekommst du eine saubere Übersicht aller importierten Themenwelten inklusive Anzahl der hinterlegten Sets. Von hier springst du direkt auf die jeweilige Themenwelt-Seite mit den passenden Sets.',
+          openTheme: 'Themenwelt öffnen',
+        };
+    const body = `
+      <main>
+        <section class="search-hero catalog-hero">
+          <div class="container">
+            <article class="hero-content">
+              <p class="eyebrow">${esc(themesPageText.eyebrow)}</p>
+              <h1>${esc(themesPageText.heading)}</h1>
+              <p class="intro-text">${esc(themesPageText.intro)}</p>
+              <p style="margin: 0; font-size: 0.95rem; opacity: 0.8;">
+                <strong>${totalThemes}</strong> ${locale === 'fr' ? 'thèmes' : 'Themenwelten'}
+                &nbsp; ·  &nbsp;
+                <strong>${totalSets}</strong> ${locale === 'fr' ? 'sets' : 'Sets'}
+              </p>
+            </article>
+          </div>
+        </section>
+        <section class="catalog-grid-section">
+          <div class="container">
+            <div class="theme-grid">
+              ${themes.map((theme) => `
+                <a href="${routePath('themeDetail', locale, { slug: theme.slug })}" class="theme-card">
+                  <div class="theme-header">
+                    <h2>${esc(theme.name)}</h2>
+                  </div>
+                  <div class="theme-stats">
+                    <span class="stat"><strong>${theme.set_count}</strong> ${locale === 'fr' ? 'sets' : 'Sets'}</span>
+                    <span class="stat"><strong>${theme.image_count}</strong> ${locale === 'fr' ? 'images' : 'Bilder'}</span>
+                  </div>
+                  <div class="theme-cta">
+                    <span class="button button-small">${esc(themesPageText.openTheme)} →</span>
+                  </div>
+                </a>
+              `).join('')}
+            </div>
+          </div>
+        </section>
+      </main>
+    `;
+
+    res.send(layout({
+      title: `${themesPageText.heading} - ${copy.headerTitle}`,
+      meta: [
+        { name: 'description', content: themesPageText.intro },
+        { name: 'og:title', content: `${themesPageText.heading} - Playcollect` },
+        { name: 'og:description', content: themesPageText.intro },
+        { name: 'og:type', content: 'website' },
+      ],
+      body,
+      currentUser: req.currentUser,
+      locale,
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get('/themenwelten/:slug', async (req, res, next) => {
   try {
     const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
@@ -1843,6 +2041,278 @@ app.get('/themenwelten/:slug', async (req, res, next) => {
         }),
         alternates: themeAlternates,
       },
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Locale-aware routes for themes detail - English
+app.get('/en/themes/:slug', async (req, res, next) => {
+  req.locale = 'en';
+  next();
+}, async (req, res, next) => {
+  try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
+    const requestedSlug = String(req.params.slug || '').trim();
+    const q = String(req.query.q || '').trim();
+    const year = String(req.query.year || '').trim();
+
+    const themeRes = await pool.query(`
+      SELECT
+        t.id,
+        t.slug AS internal_slug,
+        COALESCE(tt_req.name, tt_de.name, t.name) AS name,
+        COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS slug,
+        COALESCE(tt_req.intro, tt_de.intro, t.description, '') AS intro,
+        COALESCE(tt_req.hero_description, tt_de.hero_description, t.description, '') AS hero_description,
+        COALESCE(tt_req.meta_description, tt_de.meta_description, '') AS meta_description,
+        CASE WHEN $1 = 'de' THEN TRUE ELSE COALESCE(tt_req.is_indexable, FALSE) END AS locale_indexable,
+        COUNT(s.id)::int AS set_count,
+        COALESCE(SUM(img_count.cnt), 0)::int AS image_count,
+        COUNT(DISTINCT s.release_year)::int AS year_count
+      FROM catalog_themes t
+      LEFT JOIN catalog_theme_translations tt_req
+        ON tt_req.theme_id = t.id AND tt_req.locale = $1
+      LEFT JOIN catalog_theme_translations tt_de
+        ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
+      LEFT JOIN catalog_sets s ON s.theme_id = t.id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
+      ) img_count ON TRUE
+      WHERE LOWER(COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END)) = LOWER($2)
+      GROUP BY t.id, t.slug, t.name, tt_req.name, tt_de.name, tt_req.slug, tt_de.slug, tt_req.intro, tt_de.intro, tt_req.hero_description, tt_de.hero_description, tt_req.meta_description, tt_de.meta_description, tt_req.is_indexable
+      LIMIT 1
+    `, [locale, requestedSlug]);
+
+    if (!themeRes.rowCount) {
+      res.status(404).send(layout({ title: 'Theme not found', body: `<main class="section"><div class="container"><article class="panel glass-card"><h1>Theme not found</h1><p class="muted">There is currently no entry for this theme.</p><div class="hero-actions"><a class="button button-primary" href="${routePath('themes', locale)}">Go to themes overview</a></div></article></div></main>`, currentUser: req.currentUser, locale }));
+      return;
+    }
+
+    const theme = themeRes.rows[0];
+    const filters = ['s.theme_id = $1'];
+    const params = [theme.id];
+
+    if (q) {
+      params.push(`%${q}%`);
+      const searchParam = `$${params.length}`;
+      filters.push(`(
+        COALESCE(st_req.name, st_de.name, s.name) ILIKE ${searchParam}
+        OR s.set_number ILIKE ${searchParam}
+        OR COALESCE(st_req.description, st_de.description, s.description, '') ILIKE ${searchParam}
+      )`);
+    }
+
+    if (year) {
+      params.push(year);
+      filters.push(`COALESCE(s.release_year::text, '') = $${params.length}`);
+    }
+
+    const [yearsRes, setsRes, themeAlternates] = await Promise.all([
+      pool.query(`
+        SELECT DISTINCT s.release_year
+        FROM catalog_sets s
+        WHERE s.theme_id = $1 AND s.release_year IS NOT NULL
+        ORDER BY s.release_year DESC
+      `, [theme.id]),
+      pool.query(`
+        SELECT s.id,
+               s.set_number,
+               COALESCE(st_req.name, st_de.name, s.name) AS name,
+               s.release_year,
+               t.id AS theme_id,
+               t.name AS theme_name,
+               t.slug AS theme_slug,
+               COALESCE(st_req.description, st_de.description, s.description, '') AS description,
+               COALESCE(img.local_image_path, img.image_url, '') AS primary_image_url,
+               COALESCE(img_count.cnt, 0) AS image_count
+        FROM catalog_sets s
+        JOIN catalog_themes t ON t.id = s.theme_id
+        LEFT JOIN catalog_set_translations st_req ON st_req.set_id = s.id AND st_req.locale = $${params.length + 1}
+        LEFT JOIN catalog_set_translations st_de ON st_de.set_id = s.id AND st_de.locale = 'de'
+        LEFT JOIN catalog_set_images img ON img.set_id = s.id AND img.is_primary = TRUE
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
+        ) img_count ON TRUE
+        WHERE ${filters.join(' AND ')}
+        ORDER BY COALESCE(s.release_year, 0) DESC, s.set_number ASC
+        LIMIT 100
+      `, [...params, locale]),
+      pool.query(`
+        SELECT locale, COALESCE(slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS slug
+        FROM catalog_themes t
+        LEFT JOIN catalog_theme_translations tt ON tt.theme_id = t.id
+        WHERE t.id = $1 AND (locale IS NULL OR locale IN ('de', 'en', 'fr'))
+      `, [theme.id]),
+    ]);
+
+    // Build hreflang links
+    const hreflangs = [];
+    const alternates = themeAlternates.rows || [];
+    const deSlug = alternates.find((a) => !a.locale || a.locale === 'de')?.slug || theme.slug;
+    const enSlug = alternates.find((a) => a.locale === 'en')?.slug || theme.slug;
+    const frSlug = alternates.find((a) => a.locale === 'fr')?.slug || theme.slug;
+    hreflangs.push(`<link rel="alternate" hreflang="de" href="https://playcollect.de/themenwelten/${deSlug}" />`);
+    hreflangs.push(`<link rel="alternate" hreflang="en" href="https://playcollect.de/en/themes/${enSlug}" />`);
+    hreflangs.push(`<link rel="alternate" hreflang="fr" href="https://playcollect.de/fr/themes/${frSlug}" />`);
+
+    const sets = setsRes.rows || [];
+    const years = yearsRes.rows?.map((row) => row.release_year).filter(Boolean) || [];
+    const filteredYear = year || null;
+
+    const body = buildThemeDetailPage({ theme, sets, years, locale, q, filteredYear });
+
+    res.send(layout({
+      title: `${theme.name} - ${copy.headerTitle}`,
+      meta: [
+        { name: 'description', content: theme.meta_description || theme.intro || '' },
+        { name: 'og:title', content: `${theme.name} - Playcollect` },
+        { name: 'og:description', content: theme.hero_description || theme.intro || '' },
+        { name: 'og:type', content: 'website' },
+      ],
+      hreflangs,
+      noindex: theme.locale_indexable === false,
+      body,
+      currentUser: req.currentUser,
+      locale,
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Locale-aware routes for themes detail - French
+app.get('/fr/themes/:slug', async (req, res, next) => {
+  req.locale = 'fr';
+  next();
+}, async (req, res, next) => {
+  try {
+    const locale = normalizeLocale(req.locale || DEFAULT_LOCALE);
+    const copy = getLocaleCopy(locale);
+    const requestedSlug = String(req.params.slug || '').trim();
+    const q = String(req.query.q || '').trim();
+    const year = String(req.query.year || '').trim();
+
+    const themeRes = await pool.query(`
+      SELECT
+        t.id,
+        t.slug AS internal_slug,
+        COALESCE(tt_req.name, tt_de.name, t.name) AS name,
+        COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS slug,
+        COALESCE(tt_req.intro, tt_de.intro, t.description, '') AS intro,
+        COALESCE(tt_req.hero_description, tt_de.hero_description, t.description, '') AS hero_description,
+        COALESCE(tt_req.meta_description, tt_de.meta_description, '') AS meta_description,
+        CASE WHEN $1 = 'de' THEN TRUE ELSE COALESCE(tt_req.is_indexable, FALSE) END AS locale_indexable,
+        COUNT(s.id)::int AS set_count,
+        COALESCE(SUM(img_count.cnt), 0)::int AS image_count,
+        COUNT(DISTINCT s.release_year)::int AS year_count
+      FROM catalog_themes t
+      LEFT JOIN catalog_theme_translations tt_req
+        ON tt_req.theme_id = t.id AND tt_req.locale = $1
+      LEFT JOIN catalog_theme_translations tt_de
+        ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
+      LEFT JOIN catalog_sets s ON s.theme_id = t.id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
+      ) img_count ON TRUE
+      WHERE LOWER(COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END)) = LOWER($2)
+      GROUP BY t.id, t.slug, t.name, tt_req.name, tt_de.name, tt_req.slug, tt_de.slug, tt_req.intro, tt_de.intro, tt_req.hero_description, tt_de.hero_description, tt_req.meta_description, tt_de.meta_description, tt_req.is_indexable
+      LIMIT 1
+    `, [locale, requestedSlug]);
+
+    if (!themeRes.rowCount) {
+      res.status(404).send(layout({ title: 'Thème non trouvé', body: `<main class="section"><div class="container"><article class="panel glass-card"><h1>Thème non trouvé</h1><p class="muted">Il n'y a actuellement aucune entrée pour ce thème.</p><div class="hero-actions"><a class="button button-primary" href="${routePath('themes', locale)}">Aller à l'aperçu des thèmes</a></div></article></div></main>`, currentUser: req.currentUser, locale }));
+      return;
+    }
+
+    const theme = themeRes.rows[0];
+    const filters = ['s.theme_id = $1'];
+    const params = [theme.id];
+
+    if (q) {
+      params.push(`%${q}%`);
+      const searchParam = `$${params.length}`;
+      filters.push(`(
+        COALESCE(st_req.name, st_de.name, s.name) ILIKE ${searchParam}
+        OR s.set_number ILIKE ${searchParam}
+        OR COALESCE(st_req.description, st_de.description, s.description, '') ILIKE ${searchParam}
+      )`);
+    }
+
+    if (year) {
+      params.push(year);
+      filters.push(`COALESCE(s.release_year::text, '') = $${params.length}`);
+    }
+
+    const [yearsRes, setsRes, themeAlternates] = await Promise.all([
+      pool.query(`
+        SELECT DISTINCT s.release_year
+        FROM catalog_sets s
+        WHERE s.theme_id = $1 AND s.release_year IS NOT NULL
+        ORDER BY s.release_year DESC
+      `, [theme.id]),
+      pool.query(`
+        SELECT s.id,
+               s.set_number,
+               COALESCE(st_req.name, st_de.name, s.name) AS name,
+               s.release_year,
+               t.id AS theme_id,
+               t.name AS theme_name,
+               t.slug AS theme_slug,
+               COALESCE(st_req.description, st_de.description, s.description, '') AS description,
+               COALESCE(img.local_image_path, img.image_url, '') AS primary_image_url,
+               COALESCE(img_count.cnt, 0) AS image_count
+        FROM catalog_sets s
+        JOIN catalog_themes t ON t.id = s.theme_id
+        LEFT JOIN catalog_set_translations st_req ON st_req.set_id = s.id AND st_req.locale = $${params.length + 1}
+        LEFT JOIN catalog_set_translations st_de ON st_de.set_id = s.id AND st_de.locale = 'de'
+        LEFT JOIN catalog_set_images img ON img.set_id = s.id AND img.is_primary = TRUE
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS cnt FROM catalog_set_images i WHERE i.set_id = s.id
+        ) img_count ON TRUE
+        WHERE ${filters.join(' AND ')}
+        ORDER BY COALESCE(s.release_year, 0) DESC, s.set_number ASC
+        LIMIT 100
+      `, [...params, locale]),
+      pool.query(`
+        SELECT locale, COALESCE(slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS slug
+        FROM catalog_themes t
+        LEFT JOIN catalog_theme_translations tt ON tt.theme_id = t.id
+        WHERE t.id = $1 AND (locale IS NULL OR locale IN ('de', 'en', 'fr'))
+      `, [theme.id]),
+    ]);
+
+    // Build hreflang links
+    const hreflangs = [];
+    const alternates = themeAlternates.rows || [];
+    const deSlug = alternates.find((a) => !a.locale || a.locale === 'de')?.slug || theme.slug;
+    const enSlug = alternates.find((a) => a.locale === 'en')?.slug || theme.slug;
+    const frSlug = alternates.find((a) => a.locale === 'fr')?.slug || theme.slug;
+    hreflangs.push(`<link rel="alternate" hreflang="de" href="https://playcollect.de/themenwelten/${deSlug}" />`);
+    hreflangs.push(`<link rel="alternate" hreflang="en" href="https://playcollect.de/en/themes/${enSlug}" />`);
+    hreflangs.push(`<link rel="alternate" hreflang="fr" href="https://playcollect.de/fr/themes/${frSlug}" />`);
+
+    const sets = setsRes.rows || [];
+    const years = yearsRes.rows?.map((row) => row.release_year).filter(Boolean) || [];
+    const filteredYear = year || null;
+
+    const body = buildThemeDetailPage({ theme, sets, years, locale, q, filteredYear });
+
+    res.send(layout({
+      title: `${theme.name} - ${copy.headerTitle}`,
+      meta: [
+        { name: 'description', content: theme.meta_description || theme.intro || '' },
+        { name: 'og:title', content: `${theme.name} - Playcollect` },
+        { name: 'og:description', content: theme.hero_description || theme.intro || '' },
+        { name: 'og:type', content: 'website' },
+      ],
+      hreflangs,
+      noindex: theme.locale_indexable === false,
+      body,
+      currentUser: req.currentUser,
+      locale,
     }));
   } catch (err) {
     next(err);
