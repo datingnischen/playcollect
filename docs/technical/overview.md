@@ -31,6 +31,8 @@ Aktuelle Kern-Dateien:
 - `005_update_local_image_paths.sql`
 - `006_import_sheet_rows_to_db.py`
 - `007_add_user_sessions.sql`
+- `008_add_i18n_translation_tables.sql`
+- `009_sync_i18n_translation_sheet.py`
 - `download_playmobil_images.py`
 - `import_inventory_xlsx_to_collection.py`
 
@@ -49,6 +51,11 @@ Zusätzliche operative Skripte für Importe und Hilfsworkflows:
 Die bisher relevanten agentischen Notizen wurden aus Obsidian in dieses Repo gespiegelt:
 - `docs/agents/Tino – Playcollect PlaymoDB Import.md`
 - `docs/agents/Tino – Playcollect Sheet nach PostgreSQL Import.md`
+
+Neue Technik-Dokumentation:
+- `playcollect-ui/PLAYCOLLECT_I18N_ARCHITECTURE.md`
+- `docs/technical/playcollect-i18n-db-migration-plan.md`
+- `docs/technical/playcollect-i18n-sheet-workflow-and-rollout-qa.md`
 
 ## Deployment-/Betriebshinweis
 
