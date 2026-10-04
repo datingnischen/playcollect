@@ -50,3 +50,14 @@ GIT_SSH_COMMAND="ssh -i /root/.ssh/playcollect_github_deploy_ed25519 -o Identiti
 ## Nächste sinnvolle Git-Regel
 
 Künftige Playcollect-Arbeit sollte bevorzugt direkt in diesem Repo bzw. über die stabilen Symlink-Pfade erfolgen, damit UI, DB-Skripte, Importer und Doku gemeinsam versioniert bleiben.
+
+## Lokale Entwicklung (seit Redesign 2026-10)
+
+Ohne Server-DB: `playcollect-ui/dev/` startet ein eingebettetes Postgres und befüllt es mit Sets von der Live-Seite.
+
+```bash
+cd playcollect-ui/dev && npm install && node devdb.js     # DB auf Port 54329
+cd .. && DATABASE_URL=postgres://pc:pc@127.0.0.1:54329/playcollect node server.js
+```
+
+`PLAYCOLLECT_PREVIEW_PASSWORD` aktiviert den Testzugang (kein Standardpasswort mehr im Code). `dev/shots.js` prüft per Puppeteer die Hauptabläufe und macht Screenshots.

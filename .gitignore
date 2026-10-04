@@ -23,3 +23,8 @@ __pycache__/
 # OS/editor noise
 .DS_Store
 Thumbs.db
+playcollect-ui/dev/node_modules/
+playcollect-ui/dev/pgdata/
+playcollect-ui/dev/shots/
+playcollect-ui/dev/*.log
+playcollect-ui/dev/t.js

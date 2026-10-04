@@ -1,0 +1,1 @@
+{"name":"playcollect-dev","private":true,"version":"0.0.0","dependencies":{"embedded-postgres":"18.4.0-beta.17","puppeteer-core":"^25.12.0"}}
