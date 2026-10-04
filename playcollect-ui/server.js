@@ -262,7 +262,8 @@ app.use((req, res, next) => {
   const requestPath = String(req.path || '/');
   if (!PREVIEW_GATE_PASSWORD) return next();
   if (requestPath === '/zugang') return next();
-  if (requestPath.startsWith('/static/')) return next();
+  // Layout-Dateien sind frei, Katalogbilder und alles Übrige nur nach Freischaltung.
+  if (requestPath.startsWith('/static/') && !requestPath.startsWith('/static/catalog-images/')) return next();
   if (requestPath.startsWith('/.well-known/')) return next();
   if (hasPreviewGateAccess(req)) return next();
 
