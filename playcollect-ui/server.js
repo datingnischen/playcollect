@@ -50,6 +50,12 @@ const loginAttempts = new Map();
 const app = express();
 app.set('trust proxy', 'loopback');
 app.disable('x-powered-by');
+// Solange die Bildrechte nicht geklärt sind, ist alles noindex (auch Bilder). Wieder freigeben mit PLAYCOLLECT_INDEXING=on.
+const INDEXING_ENABLED = String(process.env.PLAYCOLLECT_INDEXING || '').toLowerCase() === 'on';
+app.use((req, res, next) => {
+  if (!INDEXING_ENABLED) res.setHeader('X-Robots-Tag', 'noindex, nofollow, noimageindex');
+  next();
+});
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: '25mb' }));
 app.use('/static', express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));

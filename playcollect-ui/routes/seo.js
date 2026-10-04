@@ -4,6 +4,8 @@
 const i18n = require('../i18n');
 const data = require('../data');
 
+const INDEXING_ENABLED = String(process.env.PLAYCOLLECT_INDEXING || '').toLowerCase() === 'on';
+
 module.exports = function registerSeoRoutes({ app, pool }) {
   async function entriesForLocale(locale) {
     const urls = [];
@@ -51,8 +53,15 @@ module.exports = function registerSeoRoutes({ app, pool }) {
       'Disallow: /einpflegen',
       'Disallow: /api/',
       'Disallow: /zugang',
-      `Sitemap: ${i18n.absoluteUrl('/sitemap.xml')}`,
+      ...(INDEXING_ENABLED ? [`Sitemap: ${i18n.absoluteUrl('/sitemap.xml')}`] : []),
     ].join('\n'));
+  });
+
+  // Ohne Freigabe: leere Sitemaps (robots.txt erlaubt das Crawlen bewusst, damit die noindex-Angaben gelesen werden).
+  const EMPTY_SITEMAP = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>';
+  app.get(['/sitemap.xml', '/sitemap-index.xml', '/sitemap-:locale.xml'], (req, res, next) => {
+    if (INDEXING_ENABLED) return next();
+    res.type('application/xml').send(EMPTY_SITEMAP);
   });
 
   app.get(['/sitemap.xml', '/sitemap-index.xml'], (req, res) => {

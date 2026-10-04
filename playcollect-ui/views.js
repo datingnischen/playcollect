@@ -290,7 +290,8 @@ function layout({ title, body, metaDescription = '', currentUser = null, active 
   const tabLinks = tabs
     .map(([key, href, ic, label]) => `<a href="${href}" class="tab${key === 'einpflegen' ? ' tab-fab' : ''}${active === key ? ' is-active' : ''}">${icon(ic, key === 'einpflegen' ? 26 : 22)}<span>${esc(label)}</span></a>`)
     .join('');
-  const robots = seo ? seo.robots : (noindex ? 'noindex,follow' : '');
+  const indexingOn = String(process.env.PLAYCOLLECT_INDEXING || '').toLowerCase() === 'on';
+  const robots = !indexingOn ? 'noindex,nofollow,noimageindex' : (seo ? seo.robots : (noindex ? 'noindex,follow' : ''));
   const canonicalUrl = seo ? seo.canonical : canonical;
   const alternates = seo ? seo.alternates : [];
   const xDefault = alternates.find((a) => a.locale === i18n.DEFAULT_LOCALE);
