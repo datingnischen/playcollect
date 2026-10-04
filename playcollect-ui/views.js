@@ -10,6 +10,9 @@ function esc(value = '') {
     .replace(/'/g, '&#39;');
 }
 
+const i18n = require('./i18n');
+const DEFAULT_L = i18n.makeL('de');
+
 const SHOW_CATALOG_IMAGES = String(process.env.PLAYCOLLECT_SHOW_CATALOG_IMAGES || '1') !== '0';
 const PLACEHOLDER_IMAGE = '/static/set-castle.svg';
 
@@ -182,31 +185,35 @@ function renderSetPicture(set, options = {}) {
   </div>`;
 }
 
-function renderQuickActions(set, state = {}) {
+function renderQuickActions(set, state = {}, L = DEFAULT_L) {
   const owned = Number(state.owned || 0);
   const wished = Boolean(state.wishlist);
   const num = esc(set.set_number);
+  const t = L.t;
   return `<div class="qa-group" data-qa-group="${num}">
-    <button class="qa qa-own${owned ? ' is-on' : ''}" type="button" data-collect data-set="${num}" data-list="owned" aria-pressed="${owned ? 'true' : 'false'}" title="${owned ? 'In meiner Sammlung – klicken zum Entfernen' : 'Hab ich!'}" aria-label="Hab ich">${icon('check', 18)}</button>
-    <button class="qa qa-wish${wished ? ' is-on' : ''}" type="button" data-collect data-set="${num}" data-list="wishlist" aria-pressed="${wished ? 'true' : 'false'}" title="${wished ? 'Auf der Wunschliste – klicken zum Entfernen' : 'Auf die Wunschliste'}" aria-label="Wunschliste">${icon('heart', 18)}</button>
+    <button class="qa qa-own${owned ? ' is-on' : ''}" type="button" data-collect data-set="${num}" data-list="owned" aria-pressed="${owned ? 'true' : 'false'}" title="${esc(owned ? t('qaOwnOn') : t('qaOwnOff'))}" aria-label="${esc(t('qaOwnAria'))}">${icon('check', 18)}</button>
+    <button class="qa qa-wish${wished ? ' is-on' : ''}" type="button" data-collect data-set="${num}" data-list="wishlist" aria-pressed="${wished ? 'true' : 'false'}" title="${esc(wished ? t('qaWishOn') : t('qaWishOff'))}" aria-label="${esc(t('qaWishAria'))}">${icon('heart', 18)}</button>
   </div>`;
 }
 
 // state: { owned: n, wishlist: bool } für den eingeloggten Nutzer (optional)
-function renderSetCard(set, state = null) {
+// Theme-Felder: theme_public_slug/theme_public_name (übersetzt) mit Rückfall auf die Basisdaten.
+function renderSetCard(set, state = null, L = DEFAULT_L) {
   const detailUrl = setDetailUrl(set.set_number);
   const color = themeColor(set.theme_slug || set.theme_name || set.set_number);
-  const community = set.user_submitted ? '<span class="chip chip-community" title="Von einem Sammler ergänzt">Community</span>' : '';
+  const themeSlug = set.theme_public_slug || publicThemeSlug(set.theme_slug);
+  const themeName = set.theme_public_name || publicThemeName(set.theme_name, set.theme_slug);
+  const community = set.user_submitted ? `<span class="chip chip-community" title="${esc(L.t('communityTitle'))}">${esc(L.t('community'))}</span>` : '';
   return `<article class="setcard" style="--tc:${color}">
     <a class="setcard-media" href="${detailUrl}" tabindex="-1" aria-hidden="true">
       ${renderSetPicture(set)}
     </a>
     <span class="setcard-num">${esc(set.set_number)}</span>
-    ${renderQuickActions(set, state || {})}
+    ${renderQuickActions(set, state || {}, L)}
     <div class="setcard-body">
       <h3 class="setcard-title"><a href="${detailUrl}">${esc(set.name)}</a></h3>
       <div class="setcard-meta">
-        ${set.theme_name ? `<a class="chip chip-theme" href="${themeUrl(set.theme_slug)}">${esc(publicThemeName(set.theme_name, set.theme_slug))}</a>` : ''}
+        ${themeName ? `<a class="chip chip-theme" href="${themeUrl(themeSlug)}">${esc(themeName)}</a>` : ''}
         ${set.release_year ? `<span class="chip">${esc(set.release_year)}</span>` : ''}
         ${community}
       </div>
@@ -214,8 +221,8 @@ function renderSetCard(set, state = null) {
   </article>`;
 }
 
-function renderSetGrid(sets, stateBySetId = new Map(), extraClass = '') {
-  return `<div class="set-grid ${extraClass}">${sets.map((set) => renderSetCard(set, stateBySetId.get(String(set.id)))).join('')}</div>`;
+function renderSetGrid(sets, stateBySetId = new Map(), L = DEFAULT_L, extraClass = '') {
+  return `<div class="set-grid ${extraClass}">${sets.map((set) => renderSetCard(set, stateBySetId.get(String(set.id)), L)).join('')}</div>`;
 }
 
 function renderEmpty({ title, text, actions = '' }) {
@@ -242,65 +249,87 @@ function renderPageHead({ eyebrow = '', title, text = '', actions = '', aside = 
 }
 
 // ---------------------------------------------------------------- Layout
-function layout({ title, body, metaDescription = '', currentUser = null, active = '', canonical = '', noindex = false }) {
+// seo: { canonical, robots, alternates[] } aus i18n.buildSeo; ohne seo greifen canonical/noindex.
+function renderLocaleMenu(L, seo) {
+  const alternates = new Map((seo?.alternates || []).map((a) => [a.locale, a.href]));
+  const items = i18n.SUPPORTED_LOCALES.map((loc) => ({
+    loc,
+    label: i18n.LOCALE_LABELS[loc],
+    href: alternates.get(loc) || i18n.absoluteUrl(i18n.routePath('home', loc)),
+    active: loc === L.locale,
+  }));
+  const current = items.find((i) => i.active) || items[0];
+  return `<details class="locale-menu"><summary class="locale-toggle" aria-label="${esc(L.t('language'))}">${esc(current.label)} <span aria-hidden="true">▾</span></summary>
+    <div class="locale-panel">${items.map((i) => `<a class="locale-item${i.active ? ' is-active' : ''}" hreflang="${esc(i18n.HREFLANG_MAP[i.loc])}" href="${esc(i.href)}">${esc(i.label)}</a>`).join('')}</div></details>`;
+}
+
+function layout({ title, body, metaDescription = '', currentUser = null, active = '', canonical = '', noindex = false, L = DEFAULT_L, seo = null }) {
+  const t = L.t;
   const safeDescription = String(metaDescription || '').trim();
   const isLoggedIn = Boolean(currentUser && currentUser.id);
   const initials = isLoggedIn ? esc(String(currentUser.display_name || currentUser.username || '?').slice(0, 2).toUpperCase()) : '';
   const nav = [
-    ['entdecken', '/entdecken', 'Entdecken'],
-    ['themen', '/themenwelten', 'Themenwelten'],
-    ['einpflegen', '/einpflegen', 'Einpflegen'],
-    ['sammlung', isLoggedIn ? '/konto/sammlung' : '/login?next=%2Fkonto%2Fsammlung', 'Meine Sammlung'],
+    ['entdecken', '/entdecken', t('navDiscover')],
+    ['themen', '/themenwelten', t('navThemes')],
+    ['einpflegen', '/einpflegen', t('navAdd')],
+    ['sammlung', isLoggedIn ? '/konto/sammlung' : '/login?next=%2Fkonto%2Fsammlung', t('navCollection')],
   ];
   const navLinks = nav
     .map(([key, href, label]) => `<a href="${href}"${active === key ? ' class="is-active" aria-current="page"' : ''}>${label}</a>`)
     .join('');
   const accountArea = isLoggedIn
-    ? `<a class="avatar-link${active === 'konto' ? ' is-active' : ''}" href="/konto" title="Mein Bereich"><span class="avatar">${initials}</span><span class="avatar-label">Mein Bereich</span></a>`
-    : `<a class="btn btn-ghost btn-sm" href="/login">Login</a><a class="btn btn-dark btn-sm" href="/register">Kostenlos starten</a>`;
+    ? `<a class="avatar-link${active === 'konto' ? ' is-active' : ''}" href="/konto" title="${esc(t('myArea'))}"><span class="avatar">${initials}</span><span class="avatar-label">${esc(t('myArea'))}</span></a>`
+    : `<a class="btn btn-ghost btn-sm" href="/login">${esc(t('login'))}</a><a class="btn btn-dark btn-sm btn-cta" href="/register">${esc(t('startFree'))}</a>`;
   const tabs = [
-    ['start', '/', 'home', 'Start'],
-    ['entdecken', '/entdecken', 'compass', 'Entdecken'],
-    ['einpflegen', '/einpflegen', 'plus', 'Einpflegen'],
-    ['sammlung', isLoggedIn ? '/konto/sammlung' : '/login?next=%2Fkonto%2Fsammlung', 'box', 'Sammlung'],
-    ['konto', isLoggedIn ? '/konto' : '/login', 'user', isLoggedIn ? 'Ich' : 'Login'],
+    ['start', '/', 'home', t('tabHome')],
+    ['entdecken', '/entdecken', 'compass', t('tabDiscover')],
+    ['einpflegen', '/einpflegen', 'plus', t('tabAdd')],
+    ['sammlung', isLoggedIn ? '/konto/sammlung' : '/login?next=%2Fkonto%2Fsammlung', 'box', t('tabCollection')],
+    ['konto', isLoggedIn ? '/konto' : '/login', 'user', isLoggedIn ? t('tabMe') : t('tabLogin')],
   ];
   const tabLinks = tabs
-    .map(([key, href, ic, label]) => `<a href="${href}" class="tab${key === 'einpflegen' ? ' tab-fab' : ''}${active === key ? ' is-active' : ''}">${icon(ic, key === 'einpflegen' ? 26 : 22)}<span>${label}</span></a>`)
+    .map(([key, href, ic, label]) => `<a href="${href}" class="tab${key === 'einpflegen' ? ' tab-fab' : ''}${active === key ? ' is-active' : ''}">${icon(ic, key === 'einpflegen' ? 26 : 22)}<span>${esc(label)}</span></a>`)
     .join('');
-  return `<!DOCTYPE html>
-<html lang="de">
+  const robots = seo ? seo.robots : (noindex ? 'noindex,follow' : '');
+  const canonicalUrl = seo ? seo.canonical : canonical;
+  const alternates = seo ? seo.alternates : [];
+  const xDefault = alternates.find((a) => a.locale === i18n.DEFAULT_LOCALE);
+  const html = `<!DOCTYPE html>
+<html lang="${esc(L.locale)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(title)}</title>
   ${safeDescription ? `<meta name="description" content="${esc(safeDescription)}">` : ''}
-  ${noindex ? '<meta name="robots" content="noindex, follow">' : ''}
-  ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
+  ${robots ? `<meta name="robots" content="${esc(robots)}">` : ''}
+  ${canonicalUrl ? `<link rel="canonical" href="${esc(canonicalUrl)}">` : ''}
+  ${alternates.map((a) => `<link rel="alternate" hreflang="${esc(a.hrefLang)}" href="${esc(a.href)}">`).join('\n  ')}
+  ${xDefault ? `<link rel="alternate" hreflang="x-default" href="${esc(xDefault.href)}">` : ''}
   <meta name="theme-color" content="#fff7e6">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:site_name" content="Playcollect">
+  <meta property="og:locale" content="${esc(i18n.OG_LOCALE[L.locale] || 'de_DE')}">
   ${safeDescription ? `<meta property="og:description" content="${esc(safeDescription)}">` : ''}
   <link rel="icon" type="image/svg+xml" href="/static/logo-playcollect.svg">
   <link rel="preload" href="/static/fonts/fredoka-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/styles.css?v=2">
+  <link rel="stylesheet" href="/static/styles.css?v=3">
 </head>
-<body data-logged-in="${isLoggedIn ? '1' : '0'}">
-  <a class="skip-link" href="#main">Zum Inhalt springen</a>
+<body data-logged-in="${isLoggedIn ? '1' : '0'}" data-locale="${esc(L.locale)}">
+  <a class="skip-link" href="#main">${esc(t('skip'))}</a>
   <header class="site-header">
     <div class="container header-inner">
-      <a class="brand" href="/" aria-label="Playcollect Startseite">
+      <a class="brand" href="/" aria-label="Playcollect">
         <img class="brand-logo" src="/static/logo-playcollect.svg" alt="" width="42" height="42">
         <span class="brand-name">Playcollect</span>
       </a>
       <form class="header-search" action="/entdecken" method="get" role="search" data-suggest-form>
-        <label class="sr-only" for="header-q">Sets suchen</label>
+        <label class="sr-only" for="header-q">${esc(t('headerSearchLabel'))}</label>
         ${icon('search', 18)}
-        <input id="header-q" name="q" type="search" placeholder="Set suchen: Name oder Nummer" autocomplete="off" data-suggest>
+        <input id="header-q" name="q" type="search" placeholder="${esc(t('headerSearchPh'))}" autocomplete="off" data-suggest>
         <div class="suggest" data-suggest-list hidden></div>
       </form>
-      <nav class="nav-desktop" aria-label="Hauptnavigation">${navLinks}</nav>
-      <div class="header-actions">${accountArea}</div>
+      <nav class="nav-desktop" aria-label="Navigation">${navLinks}</nav>
+      <div class="header-actions">${accountArea}${renderLocaleMenu(L, seo)}</div>
     </div>
   </header>
   <main id="main">
@@ -310,30 +339,32 @@ function layout({ title, body, metaDescription = '', currentUser = null, active 
     <div class="container footer-grid">
       <div class="footer-brand">
         <a class="brand" href="/"><img class="brand-logo" src="/static/logo-playcollect.svg" alt="" width="42" height="42"><span class="brand-name">Playcollect</span></a>
-        <p>Die Plattform für Playmobil-Sammler: Sets entdecken, Sammlung pflegen, Wunschliste führen.</p>
+        <p>${esc(t('footerAbout'))}</p>
       </div>
-      <nav class="footer-links" aria-label="Footer">
-        <strong>Entdecken</strong>
-        <a href="/entdecken">Alle Sets</a>
-        <a href="/themenwelten">Themenwelten</a>
-        <a href="/zufall">Zufallsfund</a>
+      <nav class="footer-links" aria-label="${esc(t('footerDiscover'))}">
+        <strong>${esc(t('footerDiscover'))}</strong>
+        <a href="/entdecken">${esc(t('footerAllSets'))}</a>
+        <a href="/themenwelten">${esc(t('footerThemes'))}</a>
+        <a href="/zufall">${esc(t('footerRandom'))}</a>
       </nav>
-      <nav class="footer-links" aria-label="Mitmachen">
-        <strong>Mitmachen</strong>
-        <a href="/einpflegen">Sets einpflegen</a>
-        <a href="${isLoggedIn ? '/konto/sammlung' : '/register'}">${isLoggedIn ? 'Meine Sammlung' : 'Kostenlos registrieren'}</a>
-        <a href="/konto/import-sammlung">Excel-Import</a>
+      <nav class="footer-links" aria-label="${esc(t('footerJoin'))}">
+        <strong>${esc(t('footerJoin'))}</strong>
+        <a href="/einpflegen">${esc(t('footerAdd'))}</a>
+        <a href="${isLoggedIn ? '/konto/sammlung' : '/register'}">${esc(isLoggedIn ? t('footerMyCollection') : t('footerRegister'))}</a>
+        <a href="/konto/import-sammlung">${esc(t('footerImport'))}</a>
       </nav>
     </div>
     <div class="container footer-legal">
-      <p>Playcollect ist eine unabhängige Sammler- und Entdeckerplattform. Wir gehören nicht zur geobra Brandstätter Stiftung &amp; Co. KG und stehen in keiner offiziellen Verbindung zur Marke PLAYMOBIL. <a href="/hinweis-playmobil">Rechtlicher Hinweis</a></p>
+      <p>${esc(t('footerLegal'))} <a href="/hinweis-playmobil">${esc(t('legalLink'))}</a></p>
     </div>
   </footer>
-  <nav class="tabbar" aria-label="Schnellnavigation">${tabLinks}</nav>
+  <nav class="tabbar" aria-label="Tabs">${tabLinks}</nav>
   <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
-  <script src="/static/app.js?v=2" defer></script>
+  <script>window.PC_T = ${JSON.stringify(L.js).replace(/</g, '\\u003c')};</script>
+  <script src="/static/app.js?v=3" defer></script>
 </body>
 </html>`;
+  return i18n.localizeHtml(html, L.locale);
 }
 
 module.exports = {
@@ -363,4 +394,6 @@ module.exports = {
   renderEmpty,
   renderPageHead,
   layout,
+  i18n,
+  DEFAULT_L,
 };

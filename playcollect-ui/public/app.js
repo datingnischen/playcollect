@@ -5,6 +5,13 @@
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
   var isLoggedIn = document.body.getAttribute('data-logged-in') === '1';
+  var T = window.PC_T || {};
+  var LANG = document.body.getAttribute('data-locale') || 'de';
+  function tr(key, vars) {
+    var text = T[key] || key;
+    Object.keys(vars || {}).forEach(function (k) { text = text.replace('{' + k + '}', vars[k]); });
+    return text;
+  }
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function esc(value) {
@@ -137,7 +144,7 @@
     var isOn = btn.classList.contains('is-on');
     var action = 'add';
     if (mode !== 'add' && isOn) {
-      if (list === 'owned' && !window.confirm('Set ' + set + ' aus deiner Sammlung entfernen? Zustand, Preis und Notizen gehen dabei verloren.')) {
+      if (list === 'owned' && !window.confirm(tr('confirmRemove', { num: set }))) {
         return Promise.resolve();
       }
       action = 'remove';
@@ -146,27 +153,27 @@
     return api('/api/collect', { set_number: set, list: list, action: action, quantity: 1 }).then(function (res) {
       btn.disabled = false;
       if (res.login) { goLogin(); return null; }
-      if (!res.ok) { toast(esc(res.error || 'Das hat nicht geklappt.'), { kind: 'error' }); return null; }
+      if (!res.ok) { toast(esc(res.error || tr('error')), { kind: 'error' }); return null; }
       applyState(res.set.number, res.state);
       pop(btn);
       var name = esc(res.set.name);
       if (action === 'remove') {
-        toast((list === 'owned' ? 'Aus der Sammlung entfernt: ' : 'Von der Wunschliste entfernt: ') + name);
+        toast((list === 'owned' ? tr('removedOwn') : tr('removedWish')) + name);
       } else if (list === 'owned') {
-        toast('<b>Hab ich!</b> ' + name + (res.state.owned > 1 ? ' (' + res.state.owned + '×)' : '') + (res.wishlist_cleared ? ' – von der Wunschliste übernommen' : ''), {
-          action: mode === 'add' ? { label: 'Rückgängig', run: function () {
+        toast('<b>' + esc(tr('own')) + '</b> ' + name + (res.state.owned > 1 ? ' (' + res.state.owned + '×)' : '') + (res.wishlist_cleared ? esc(tr('fromWish')) : ''), {
+          action: mode === 'add' ? { label: tr('undo'), run: function () {
             api('/api/collect', { set_number: set, list: 'owned', action: 'set', quantity: Math.max(0, res.state.owned - 1) }).then(function (r) { if (r.ok) { applyState(set, r.state); recountSession(-1, res.state.owned === 1); } });
           } } : null
         });
       } else {
-        toast('Auf der Wunschliste: ' + name, { action: { label: 'Rückgängig', run: function () {
+        toast(tr('wishAdded') + name, { action: { label: tr('undo'), run: function () {
           api('/api/collect', { set_number: set, list: 'wishlist', action: 'remove' }).then(function (r) { if (r.ok) applyState(set, r.state); });
         } } });
       }
       return res;
     }).catch(function () {
       btn.disabled = false;
-      toast('Keine Verbindung. Bitte versuche es nochmal.', { kind: 'error' });
+      toast(tr('offline'), { kind: 'error' });
       return null;
     });
   }
@@ -193,13 +200,13 @@
     var current = Number(($('[data-qty]', panel) || {}).textContent) || 1;
     var next = current + Number(step.getAttribute('data-step'));
     if (next < 1) {
-      if (!window.confirm('Set ' + set + ' aus deiner Sammlung entfernen?')) return;
+      if (!window.confirm(tr('confirmRemove', { num: set }))) return;
       api('/api/collect', { set_number: set, list: 'owned', action: 'remove' }).then(function (r) { if (r.ok) applyState(set, r.state); });
       return;
     }
     if (next > 99) return;
     api('/api/collect', { set_number: set, list: 'owned', action: 'set', quantity: next }).then(function (r) {
-      if (r.ok) applyState(set, r.state); else toast(esc(r.error || 'Das hat nicht geklappt.'), { kind: 'error' });
+      if (r.ok) applyState(set, r.state); else toast(esc(r.error || tr('error')), { kind: 'error' });
     });
   });
 
@@ -215,16 +222,16 @@
     function close() { list.hidden = true; active = -1; input.removeAttribute('aria-activedescendant'); }
     function render(query) {
       if (!items.length) {
-        list.innerHTML = '<div class="suggest-empty">Kein Treffer für „' + esc(query) + '“. <a href="/einpflegen?q=' + encodeURIComponent(query) + '">Set neu anlegen</a></div>';
+        list.innerHTML = '<div class="suggest-empty">' + esc(tr('noHit')) + ' „' + esc(query) + '“. <a href="/einpflegen?q=' + encodeURIComponent(query) + '">' + esc(tr('createSet')) + '</a></div>';
         list.hidden = false;
         return;
       }
       list.innerHTML = items.map(function (item, idx) {
-        var badge = item.owned ? '<span class="suggest-badge is-own">Hab ich</span>' : (item.wishlist ? '<span class="suggest-badge is-wish">Wunsch</span>' : '');
+        var badge = item.owned ? '<span class="suggest-badge is-own">' + esc(tr('badgeOwn')) + '</span>' : (item.wishlist ? '<span class="suggest-badge is-wish">' + esc(tr('badgeWish')) + '</span>' : '');
         return '<a class="suggest-item" id="sg-' + idx + '" role="option" href="' + esc(item.url) + '" style="--tc:' + esc(item.color) + '">'
           + '<span class="suggest-pic pic' + '"><span class="pic-fallback">' + esc(item.number) + '</span>' + (item.image ? '<img src="' + esc(item.image) + '" alt="" loading="lazy">' : '') + '</span>'
           + '<span class="suggest-copy"><strong>' + esc(item.name) + '</strong><small>Set ' + esc(item.number) + (item.year ? ' · ' + esc(item.year) : '') + (item.theme ? ' · ' + esc(item.theme) : '') + '</small></span>' + badge + '</a>';
-      }).join('') + '<a class="suggest-all" href="/entdecken?q=' + encodeURIComponent(query) + '">Alle Treffer für „' + esc(query) + '“ anzeigen →</a>';
+      }).join('') + '<a class="suggest-all" href="/entdecken?q=' + encodeURIComponent(query) + '">' + esc(tr('allHits')) + ' „' + esc(query) + '“ →</a>';
       list.hidden = false;
       markLoadedImages(list);
     }
@@ -233,7 +240,7 @@
       if (q.length < 2) { close(); return; }
       if (controller) controller.abort();
       controller = window.AbortController ? new AbortController() : null;
-      fetch('/api/suggest?q=' + encodeURIComponent(q), { credentials: 'same-origin', signal: controller ? controller.signal : undefined })
+      fetch('/api/suggest?lang=' + LANG + '&q=' + encodeURIComponent(q), { credentials: 'same-origin', signal: controller ? controller.signal : undefined })
         .then(function (r) { return r.json(); })
         .then(function (json) { items = json.items || []; active = -1; render(q); })
         .catch(function () {});
@@ -296,7 +303,7 @@
         if (json.nextPage) {
           link.setAttribute('href', link.getAttribute('href').replace(/page=\d+/, 'page=' + json.nextPage));
           var rest = link.querySelector('.muted');
-          if (rest) rest.textContent = '(' + json.remaining.toLocaleString('de-DE') + ' weitere)';
+          if (rest) rest.textContent = '(' + tr('more', { n: json.remaining.toLocaleString(LANG === 'de' ? 'de-DE' : LANG) }) + ')';
           link.classList.remove('is-loading');
           loading = false;
         } else {
@@ -460,7 +467,7 @@
       if (q.length < 2) { qItems = []; qResults.innerHTML = ''; return; }
       if (qController) qController.abort();
       qController = window.AbortController ? new AbortController() : null;
-      fetch('/api/suggest?q=' + encodeURIComponent(q), { credentials: 'same-origin', signal: qController ? qController.signal : undefined })
+      fetch('/api/suggest?lang=de&q=' + encodeURIComponent(q), { credentials: 'same-origin', signal: qController ? qController.signal : undefined })
         .then(function (r) { return r.json(); })
         .then(function (json) { qItems = json.items || []; renderQuick(q); })
         .catch(function () {});

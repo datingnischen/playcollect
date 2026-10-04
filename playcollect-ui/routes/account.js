@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const data = require('../data');
+const i18n = require('../i18n');
 
 const INVENTORY_IMPORT_SCRIPT = process.env.PLAYCOLLECT_IMPORT_SCRIPT || '/root/playcollect-db/import_inventory_xlsx_to_collection.py';
 const INVENTORY_IMPORT_PYTHON = process.env.PLAYCOLLECT_IMPORT_PYTHON || '/root/.hermes/google-venv/bin/python';
@@ -695,23 +696,27 @@ module.exports = function registerAccountRoutes({
 
   // ------------------------------------------------------------ Rechtliches
   app.get('/hinweis-playmobil', (req, res) => {
+    const L = req.L;
+    const t = L.t;
     const body = `
       <section class="section">
         <div class="container narrow">
           <article class="card prose">
-            <span class="eyebrow">Rechtlicher Hinweis</span>
-            <h1>Playcollect ist eine unabhängige Sammlerplattform</h1>
-            <p>Playcollect richtet sich an Playmobil-Liebhaber, Sammler und alle, die ältere wie neue Sets bequem entdecken möchten. Die Plattform dient der Sammlung, Übersicht und Einordnung von Sets und steht in keiner offiziellen Verbindung zur Marke PLAYMOBIL.</p>
-            <p>PLAYMOBIL ist eine Marke der geobra Brandstätter Stiftung &amp; Co. KG. Die Nennung der Marke erfolgt ausschließlich zur Beschreibung und Einordnung der gezeigten Sets für Sammler und Interessierte.</p>
-            <div class="btn-row"><a class="btn btn-primary" href="/">Zur Startseite</a><a class="btn btn-secondary" href="/entdecken">Zum Katalog</a></div>
+            <span class="eyebrow">${esc(t('legalLink'))}</span>
+            <h1>${esc(t('legalTitle'))}</h1>
+            <p>${esc(t('legalP1'))}</p>
+            <p>${esc(t('legalP2'))}</p>
+            <div class="btn-row"><a class="btn btn-primary" href="/">${esc(t('toHome'))}</a><a class="btn btn-secondary" href="/entdecken">${esc(t('toCatalog'))}</a></div>
           </article>
         </div>
       </section>`;
     res.send(layout({
-      title: 'Rechtlicher Hinweis – Playcollect',
+      title: t('legalHtmlTitle'),
       body,
-      metaDescription: 'Rechtlicher Hinweis zu Playcollect als unabhängige Sammlerplattform für Playmobil-Liebhaber.',
+      metaDescription: t('legalMeta'),
       currentUser: req.currentUser,
+      L,
+      seo: i18n.buildSeo('legalPlaymobil', req.locale),
     }));
   });
 };

@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 
 const views = require('./views');
+const i18n = require('./i18n');
 const { esc, layout } = views;
 
 function parseCredFile(filePath) {
@@ -43,7 +44,7 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_ATTEMPT_MAX = 5;
 // Testzugang: nur aktiv, wenn PLAYCOLLECT_PREVIEW_PASSWORD gesetzt ist (kein Klartext-Default im Repo).
-const PREVIEW_GATE_PASSWORD = String(process.env.PLAYCOLLECT_PREVIEW_PASSWORD || '');
+const PREVIEW_GATE_PASSWORD = String(process.env.PLAYCOLLECT_PREVIEW_PASSWORD || process.env.PLAYCOLLECT_PREVIEW_GATE_PASSWORD || '');
 const loginAttempts = new Map();
 
 const app = express();
@@ -52,6 +53,7 @@ app.disable('x-powered-by');
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: '25mb' }));
 app.use('/static', express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
+app.use(i18n.localeMiddleware);
 
 function parseCookies(cookieHeader = '') {
   const cookies = {};
@@ -284,18 +286,20 @@ const ctx = {
 };
 
 require('./routes/discover')(ctx);
+require('./routes/seo')(ctx);
 require('./routes/collect')(ctx);
 require('./routes/account')(ctx);
 
 app.use((req, res) => {
   res.status(404).send(layout({
-    title: 'Seite nicht gefunden – Playcollect',
+    title: `${req.L.t('notFoundTitle')} – Playcollect`,
     currentUser: req.currentUser,
-    noindex: true,
+    L: req.L,
+    seo: { canonical: '', robots: 'noindex,follow', alternates: [] },
     body: `<section class="section"><div class="container">${views.renderEmpty({
-      title: 'Hier ist nichts gebaut',
-      text: 'Diese Seite gibt es nicht. Vielleicht findest du dein Set über die Suche.',
-      actions: '<a class="btn btn-primary" href="/entdecken">Sets entdecken</a><a class="btn btn-secondary" href="/">Zur Startseite</a>',
+      title: req.L.t('notFoundTitle'),
+      text: esc(req.L.t('notFoundText')),
+      actions: `<a class="btn btn-primary" href="/entdecken">${esc(req.L.t('discoverSets'))}</a><a class="btn btn-secondary" href="/">${esc(req.L.t('toHome'))}</a>`,
     })}</div></section>`,
   }));
 });

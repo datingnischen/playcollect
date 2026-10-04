@@ -1,6 +1,8 @@
 // Entdecken: Startseite, Katalogsuche, Themenwelten, Set-Detail, Zufallsfund, Such-API.
+// Alle Seiten sind sprachabhängig (req.L): Texte aus i18n.js, Namen aus den Übersetzungstabellen.
 
 const data = require('../data');
+const i18n = require('../i18n');
 
 const THEME_SEO_COPY = {
   special: {
@@ -40,51 +42,55 @@ const THEME_SEO_COPY = {
   },
 };
 
-function buildThemePageContent(theme, stats = {}) {
-  const entry = THEME_SEO_COPY[theme.slug] || {};
-  const setCount = Number(stats.setCount || 0);
-  const yearCount = Number(stats.yearCount || 0);
-  const baseIntro = entry.intro || `${theme.name} ist eine eigenständige Playmobil-Themenwelt mit vielen passenden Sets für Sammler, Spielwelten und gezielte Katalogsuche.`;
-  return {
-    eyebrow: entry.eyebrow || 'Themenwelt',
-    intro: `${baseIntro} Aktuell sind ${setCount} Sets${yearCount ? `, verteilt auf ${yearCount} Jahrgänge,` : ''} hinterlegt.`,
-    highlights: Array.isArray(entry.highlights) && entry.highlights.length
-      ? entry.highlights
-      : ['Direkt klickbare Setübersicht', 'Schneller Überblick über die Themenwelt', 'Starke Basis für Sammlung und Ausbau'],
-    seoTitle: `${theme.name} Themenwelt – ${setCount} Playmobil-Sets im Überblick`,
-    seoDescription: `${theme.name} Themenwelt bei Playcollect: ${setCount} hinterlegte Playmobil-Sets${yearCount ? ` aus ${yearCount} Jahrgängen` : ''}, filterbar nach Name, Setnummer und Jahr. ${entry.intro || `Entdecke passende Sets und Sammler-Highlights aus ${theme.name}.`}`.slice(0, 300),
-  };
-}
-
 const DECADES = [1970, 1980, 1990, 2000, 2010, 2020];
+const SORT_KEYS = { empfohlen: 'sortEmpfohlen', neu: 'sortNeu', jahr_neu: 'sortJahrNeu', jahr_alt: 'sortJahrAlt', nummer: 'sortNummer', name: 'sortName' };
 
 module.exports = function registerDiscoverRoutes({ app, pool, views }) {
   const {
     esc, icon, layout, themeColor, formatNumber, formatMoneyFromCents, parseMetadata, imageKindLabel,
-    setDetailUrl, publicThemeSlug, publicThemeName, themeUrl, discoverUrl, getCatalogImageUrl,
-    renderThemeLink, renderSetCard, renderSetGrid, renderSetPicture, renderQuickActions, renderEmpty, renderPageHead,
+    setDetailUrl, themeUrl, discoverUrl, getCatalogImageUrl,
+    renderSetCard, renderSetGrid, renderSetPicture, renderEmpty, renderPageHead,
   } = views;
 
-  // ------------------------------------------------------------ Hilfen
-  function renderThemeTile(theme, covers = []) {
+  // Theme-Inhalt: deutsche Texte aus THEME_SEO_COPY, in anderen Sprachen Übersetzung aus der DB bzw. allgemeine Texte.
+  function buildThemePageContent(theme, L) {
+    const t = L.t;
+    const de = L.locale === 'de';
+    const entry = de ? (THEME_SEO_COPY[theme.public_slug] || THEME_SEO_COPY[theme.slug] || {}) : {};
+    const name = theme.public_name;
+    const baseIntro = entry.intro || theme.intro || t('themeFallbackIntro', { name });
+    const years = theme.year_count ? t('themeIntroYears', { y: theme.year_count }) : '';
+    const tail = t('themeIntroTail', { s: theme.set_count, y: years });
+    const yearsSeo = theme.year_count ? t('themeSeoYears', { y: theme.year_count }) : '';
+    return {
+      eyebrow: entry.eyebrow || t('themeFallbackEyebrow'),
+      intro: `${baseIntro} ${tail}`,
+      highlights: entry.highlights || String(t('themeHighlights')).split('|'),
+      seoTitle: t('themeSeoTitle', { name, n: theme.set_count }),
+      seoDescription: (theme.meta_description || `${t('themeSeoDesc', { name, n: theme.set_count, y: yearsSeo })} ${entry.intro || ''}`).trim().slice(0, 300),
+    };
+  }
+
+  function renderThemeTile(theme, covers = [], L) {
     const color = themeColor(theme.slug);
     const pics = covers.slice(0, 3).map((url, idx) => `<img class="tile-pic tile-pic-${idx + 1}" src="${esc(getCatalogImageUrl(url))}" alt="" loading="lazy" decoding="async">`).join('');
-    return `<a class="theme-tile" style="--tc:${color}" href="${themeUrl(theme.slug)}">
+    return `<a class="theme-tile" style="--tc:${color}" href="${themeUrl(theme.public_slug)}">
       <span class="tile-art" aria-hidden="true">${pics}</span>
       <span class="tile-body">
-        <strong>${esc(publicThemeName(theme.name, theme.slug))}</strong>
-        <small>${esc(formatNumber(theme.set_count))} Sets${theme.first_year && theme.last_year ? ` · ${esc(theme.first_year)}–${esc(theme.last_year)}` : ''}</small>
+        <strong>${esc(theme.public_name)}</strong>
+        <small>${esc(L.t('tileSets', { n: formatNumber(theme.set_count) }))}${theme.first_year && theme.last_year ? ` · ${esc(theme.first_year)}–${esc(theme.last_year)}` : ''}</small>
       </span>
     </a>`;
   }
 
-  function renderLoadMore(result, baseParams, basePath) {
+  function renderLoadMore(result, baseParams, basePath, L) {
     if (result.filters.page >= result.totalPages) return '';
     const next = { ...baseParams, page: result.filters.page + 1 };
     const qs = Object.entries(next).filter(([, v]) => v !== '' && v !== 0 && v !== false && v != null)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v === true ? '1' : v)}`).join('&');
+    const rest = formatNumber(result.total - result.filters.page * result.pageSize);
     return `<div class="load-more" data-load-more>
-      <a class="btn btn-secondary btn-lg" href="${basePath}?${qs}" data-load-more-link>Mehr Sets laden <span class="muted">(${formatNumber(result.total - result.filters.page * result.pageSize)} weitere)</span></a>
+      <a class="btn btn-secondary btn-lg" href="${basePath}?${qs}" data-load-more-link>${esc(L.t('loadMore'))} <span class="muted">${esc(L.t('loadMoreRest', { n: rest }))}</span></a>
     </div>`;
   }
 
@@ -92,28 +98,36 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
     return { q: f.q, theme: f.theme, decade: f.decade || '', sort: f.sort === 'empfohlen' ? '' : f.sort, foto: f.photo ? '1' : '', status: f.status };
   }
 
-  async function renderResults(req, res, { rawFilters, basePath, fixedTheme = null }) {
+  async function runPage(req, rawFilters) {
     const userId = req.currentUser?.id || null;
-    const result = await data.runDiscover(pool, fixedTheme ? { ...rawFilters, theme: fixedTheme } : rawFilters, userId);
+    const result = await data.runDiscover(pool, rawFilters, userId);
+    result.sets = await data.localizeSetRows(pool, result.sets, req.locale);
     const states = await data.getUserSetStates(pool, userId, result.sets.map((s) => s.id));
     return { result, states };
   }
 
+  const partialJson = (result, states, L) => ({
+    html: result.sets.map((set) => renderSetCard(set, states.get(String(set.id)), L)).join(''),
+    nextPage: result.filters.page < result.totalPages ? result.filters.page + 1 : 0,
+    remaining: Math.max(0, result.total - result.filters.page * result.pageSize),
+  });
+
   // ------------------------------------------------------------ Start
   app.get('/', async (req, res, next) => {
     try {
+      const L = req.L;
+      const t = L.t;
       const userId = req.currentUser?.id || null;
       const [counts, freshRes, themes, decadeRes, userStatsRes] = await Promise.all([
         pool.query(`
           SELECT (SELECT COUNT(*) FROM catalog_sets)::int AS set_count,
                  (SELECT COUNT(*) FROM catalog_themes WHERE EXISTS (SELECT 1 FROM catalog_sets s WHERE s.theme_id = catalog_themes.id))::int AS theme_count,
                  (SELECT COUNT(*) FROM catalog_set_images)::int AS image_count,
-                 (SELECT COUNT(*) FROM app_users)::int AS user_count,
                  (SELECT COALESCE(SUM(quantity), 0) FROM user_collection_items i JOIN user_collections c ON c.id = i.collection_id WHERE c.collection_type = 'owned')::int AS owned_count`),
         pool.query(`${data.SET_CARD_SELECT}
           WHERE img.local_image_path IS NOT NULL OR img.image_url IS NOT NULL
           ORDER BY s.id DESC LIMIT 12`),
-        data.getThemeStats(pool),
+        data.getThemeStats(pool, req.locale),
         pool.query(`SELECT (release_year / 10 * 10)::int AS decade, COUNT(*)::int AS cnt FROM catalog_sets WHERE release_year IS NOT NULL GROUP BY 1 ORDER BY 1`),
         userId
           ? pool.query(`SELECT COALESCE(SUM(i.quantity), 0)::int AS pieces, COUNT(*)::int AS sets
@@ -124,25 +138,26 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
 
       const c = counts.rows[0];
       const topThemes = themes.slice(0, 8);
+      const fresh = await data.localizeSetRows(pool, freshRes.rows, req.locale);
       const [covers, states] = await Promise.all([
-        data.getThemeCovers(pool, topThemes.map((t) => t.slug)),
-        data.getUserSetStates(pool, userId, freshRes.rows.map((s) => s.id)),
+        data.getThemeCovers(pool, topThemes.map((x) => x.slug)),
+        data.getUserSetStates(pool, userId, fresh.map((s) => s.id)),
       ]);
       const userStats = userStatsRes.rows[0];
       const firstName = req.currentUser ? String(req.currentUser.display_name || req.currentUser.username).split(' ')[0] : '';
 
       const heroCopy = req.currentUser
-        ? `<span class="eyebrow eyebrow-dark">${icon('sparkle', 16)} Willkommen zurück, ${esc(firstName)}</span>
-           <h1>Was ist <em>neu</em> in deiner Sammlung?</h1>
-           <p class="lead">Du hast <strong>${formatNumber(userStats.sets)}</strong> verschiedene Sets${userStats.pieces !== userStats.sets ? ` (${formatNumber(userStats.pieces)} Stück)` : ''} gesammelt. Such dir das nächste Fundstück oder trag deinen letzten Flohmarkt-Fang direkt ein.</p>`
-        : `<span class="eyebrow eyebrow-dark">${icon('sparkle', 16)} Die Plattform für Playmobil-Sammler</span>
-           <h1>Finde jedes Set. Zeig deine <em>Sammlung</em>.</h1>
-           <p class="lead">${formatNumber(c.set_count)} Playmobil-Sets aus allen Jahrzehnten entdecken, mit einem Klick merken – und deine eigene Sammlung in Minuten aufbauen.</p>`;
+        ? `<span class="eyebrow eyebrow-dark">${icon('sparkle', 16)} ${esc(t('homeWelcome', { name: firstName }))}</span>
+           <h1>${t('homeTitleBack')}</h1>
+           <p class="lead">${t('homeLeadBack', { n: formatNumber(userStats.sets), pieces: userStats.pieces !== userStats.sets ? t('homePieces', { n: formatNumber(userStats.pieces) }) : '' })}</p>`
+        : `<span class="eyebrow eyebrow-dark">${icon('sparkle', 16)} ${esc(t('homeEyebrow'))}</span>
+           <h1>${t('homeTitle')}</h1>
+           <p class="lead">${esc(t('homeLead', { n: formatNumber(c.set_count) }))}</p>`;
       const heroActions = req.currentUser
-        ? `<a class="btn btn-primary btn-lg" href="/einpflegen">${icon('plus', 20)} Sets einpflegen</a>
-           <a class="btn btn-white btn-lg" href="/konto/sammlung">Meine Sammlung</a>`
-        : `<a class="btn btn-primary btn-lg" href="/register">Kostenlos starten</a>
-           <a class="btn btn-white btn-lg" href="/entdecken">Katalog durchstöbern</a>`;
+        ? `<a class="btn btn-primary btn-lg" href="/einpflegen">${icon('plus', 20)} ${esc(t('addSets'))}</a>
+           <a class="btn btn-white btn-lg" href="/konto/sammlung">${esc(t('myCollection'))}</a>`
+        : `<a class="btn btn-primary btn-lg" href="/register">${esc(t('startFree2'))}</a>
+           <a class="btn btn-white btn-lg" href="/entdecken">${esc(t('browseCatalog'))}</a>`;
 
       const body = `
         <section class="hero">
@@ -151,89 +166,91 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
             <div class="hero-copy">
               ${heroCopy}
               <form class="hero-search" action="/entdecken" method="get" role="search" data-suggest-form>
-                <label class="sr-only" for="hero-q">Set suchen</label>
+                <label class="sr-only" for="hero-q">${esc(t('headerSearchLabel'))}</label>
                 ${icon('search', 22)}
-                <input id="hero-q" name="q" type="search" placeholder="Set suchen – z. B. Piratenschiff oder 70955" autocomplete="off" data-suggest>
-                <button class="btn btn-primary" type="submit">Suchen</button>
+                <input id="hero-q" name="q" type="search" placeholder="${esc(t('heroSearchPh'))}" autocomplete="off" data-suggest>
+                <button class="btn btn-primary" type="submit">${esc(t('search'))}</button>
                 <div class="suggest" data-suggest-list hidden></div>
               </form>
               <div class="hero-quick">
-                <span>Beliebt:</span>
-                ${topThemes.slice(0, 5).map((t) => `<a class="chip chip-white" href="${themeUrl(t.slug)}">${esc(publicThemeName(t.name, t.slug))}</a>`).join('')}
-                <a class="chip chip-white chip-action" href="/zufall">${icon('shuffle', 14)} Zufallsfund</a>
+                <span>${esc(t('popular'))}</span>
+                ${topThemes.slice(0, 5).map((th) => `<a class="chip chip-white" href="${themeUrl(th.public_slug)}">${esc(th.public_name)}</a>`).join('')}
+                <a class="chip chip-white chip-action" href="/zufall">${icon('shuffle', 14)} ${esc(t('random'))}</a>
               </div>
               <div class="hero-actions">${heroActions}</div>
             </div>
             <div class="hero-stage" aria-hidden="true">
-              ${freshRes.rows.slice(0, 3).map((set, idx) => `<div class="stage-card stage-card-${idx + 1}" style="--tc:${themeColor(set.theme_slug || set.set_number)}">${renderSetPicture(set, { eager: true })}<span class="stage-tag">${esc(set.set_number)}</span></div>`).join('')}
+              ${fresh.slice(0, 3).map((set, idx) => `<div class="stage-card stage-card-${idx + 1}" style="--tc:${themeColor(set.theme_slug || set.set_number)}">${renderSetPicture(set, { eager: true })}<span class="stage-tag">${esc(set.set_number)}</span></div>`).join('')}
             </div>
           </div>
         </section>
 
         <section class="stats-strip">
           <div class="container stats-grid">
-            <div><strong data-count="${c.set_count}">${formatNumber(c.set_count)}</strong><span>Sets im Katalog</span></div>
-            <div><strong data-count="${c.theme_count}">${formatNumber(c.theme_count)}</strong><span>Themenwelten</span></div>
-            <div><strong data-count="${c.image_count}">${formatNumber(c.image_count)}</strong><span>Fotos</span></div>
-            <div><strong data-count="${c.owned_count}">${formatNumber(c.owned_count)}</strong><span>Sets in Sammlungen</span></div>
+            <div><strong data-count="${c.set_count}">${formatNumber(c.set_count)}</strong><span>${esc(t('statSets'))}</span></div>
+            <div><strong data-count="${c.theme_count}">${formatNumber(c.theme_count)}</strong><span>${esc(t('statThemes'))}</span></div>
+            <div><strong data-count="${c.image_count}">${formatNumber(c.image_count)}</strong><span>${esc(t('statPhotos'))}</span></div>
+            <div><strong data-count="${c.owned_count}">${formatNumber(c.owned_count)}</strong><span>${esc(t('statOwned'))}</span></div>
           </div>
         </section>
 
         <section class="section">
           <div class="container section-head">
-            <div><span class="eyebrow">Frisch im Katalog</span><h2>Neu entdeckt</h2></div>
-            <a class="link-arrow" href="/entdecken?sort=neu">Alle neuen Sets ${icon('arrow', 18)}</a>
+            <div><span class="eyebrow">${esc(t('freshEyebrow'))}</span><h2>${esc(t('freshTitle'))}</h2></div>
+            <a class="link-arrow" href="/entdecken?sort=neu">${esc(t('freshAll'))} ${icon('arrow', 18)}</a>
           </div>
           <div class="container">
             <div class="rail" data-rail>
-              ${freshRes.rows.map((set) => renderSetCard(set, states.get(String(set.id)))).join('')}
+              ${fresh.map((set) => renderSetCard(set, states.get(String(set.id)), L)).join('')}
             </div>
           </div>
         </section>
 
         <section class="section section-tint">
           <div class="container section-head">
-            <div><span class="eyebrow">Themenwelten</span><h2>Wo fängst du an?</h2></div>
-            <a class="link-arrow" href="/themenwelten">Alle ${formatNumber(c.theme_count)} Themenwelten ${icon('arrow', 18)}</a>
+            <div><span class="eyebrow">${esc(t('themesEyebrow'))}</span><h2>${esc(t('themesTitleStart'))}</h2></div>
+            <a class="link-arrow" href="/themenwelten">${esc(t('themesAllN', { n: formatNumber(c.theme_count) }))} ${icon('arrow', 18)}</a>
           </div>
           <div class="container tile-grid">
-            ${topThemes.map((t) => renderThemeTile(t, covers.get(t.slug) || [])).join('')}
+            ${topThemes.map((th) => renderThemeTile(th, covers.get(th.slug) || [], L)).join('')}
           </div>
         </section>
 
         <section class="section">
           <div class="container section-head">
-            <div><span class="eyebrow">Zeitreise</span><h2>Nach Jahrzehnt stöbern</h2></div>
-            <a class="link-arrow" href="/zufall">${icon('shuffle', 18)} Überrasch mich</a>
+            <div><span class="eyebrow">${esc(t('timeEyebrow'))}</span><h2>${esc(t('timeTitle'))}</h2></div>
+            <a class="link-arrow" href="/zufall">${icon('shuffle', 18)} ${esc(t('surprise'))}</a>
           </div>
           <div class="container decade-row">
             ${decadeRes.rows.filter((r) => r.decade >= 1970).map((r) => `
               <a class="decade" href="${discoverUrl({ decade: r.decade, sort: 'jahr_alt' })}" style="--tc:${themeColor('d' + r.decade)}">
-                <strong>${r.decade}er</strong><span>${formatNumber(r.cnt)} Sets</span>
+                <strong>${esc(t('decadeLabel', { d: r.decade }))}</strong><span>${esc(t('tileSets', { n: formatNumber(r.cnt) }))}</span>
               </a>`).join('')}
           </div>
         </section>
 
         <section class="section">
           <div class="container how">
-            <div class="how-head"><span class="eyebrow">So geht’s</span><h2>In drei Schritten zur Sammlung</h2></div>
+            <div class="how-head"><span class="eyebrow">${esc(t('howEyebrow'))}</span><h2>${esc(t('howTitle'))}</h2></div>
             <ol class="how-steps">
-              <li><span class="step-num">1</span><h3>Entdecken</h3><p>Stöbere nach Themenwelt, Jahrzehnt oder Name. Fotos und Daten stehen direkt bereit.</p></li>
-              <li><span class="step-num">2</span><h3>Merken</h3><p>Ein Klick auf das Häkchen: „Hab ich“. Ein Klick aufs Herz: Wunschliste.</p></li>
-              <li><span class="step-num">3</span><h3>Einpflegen</h3><p>Setnummer eintippen, Enter drücken, fertig. Fehlt ein Set, legst du es einfach neu an.</p></li>
+              <li><span class="step-num">1</span><h3>${esc(t('how1'))}</h3><p>${esc(t('how1t'))}</p></li>
+              <li><span class="step-num">2</span><h3>${esc(t('how2'))}</h3><p>${esc(t('how2t'))}</p></li>
+              <li><span class="step-num">3</span><h3>${esc(t('how3'))}</h3><p>${esc(t('how3t'))}</p></li>
             </ol>
             <div class="btn-row how-cta">
-              <a class="btn btn-primary btn-lg" href="${req.currentUser ? '/einpflegen' : '/register'}">${req.currentUser ? 'Jetzt Sets einpflegen' : 'Kostenlos registrieren'}</a>
-              <a class="btn btn-secondary btn-lg" href="/entdecken">Katalog öffnen</a>
+              <a class="btn btn-primary btn-lg" href="${req.currentUser ? '/einpflegen' : '/register'}">${esc(req.currentUser ? t('howCtaAdd') : t('howCtaRegister'))}</a>
+              <a class="btn btn-secondary btn-lg" href="/entdecken">${esc(t('openCatalog'))}</a>
             </div>
           </div>
         </section>`;
       res.send(layout({
-        title: 'Playcollect – Playmobil-Sets entdecken und Sammlung verwalten',
-        metaDescription: `Playcollect: ${formatNumber(c.set_count)} Playmobil-Sets in ${formatNumber(c.theme_count)} Themenwelten entdecken, Sammlung und Wunschliste pflegen und fehlende Sets selbst einpflegen.`,
+        title: t('homeMetaTitle'),
+        metaDescription: t('homeMeta', { sets: formatNumber(c.set_count), themes: formatNumber(c.theme_count) }),
         body,
         currentUser: req.currentUser,
         active: 'start',
+        L,
+        seo: i18n.buildSeo('home', req.locale),
       }));
     } catch (err) {
       next(err);
@@ -241,38 +258,40 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
   });
 
   // ------------------------------------------------------------ Entdecken
-  function renderFilterBar({ filters, themes, action, hideTheme = false, loggedIn }) {
+  function renderFilterBar({ filters, action, hideTheme = false, loggedIn, L }) {
+    const t = L.t;
     const hidden = (name, value) => (value ? `<input type="hidden" name="${name}" value="${esc(value)}">` : '');
     return `<form class="filterbar" method="get" action="${action}" data-filter-form>
       <div class="filter-search">
         ${icon('search', 18)}
-        <input name="q" type="search" value="${esc(filters.q)}" placeholder="Name, Setnummer oder Stichwort" aria-label="Suchbegriff">
+        <input name="q" type="search" value="${esc(filters.q)}" placeholder="${esc(t('filterQPh'))}" aria-label="${esc(t('filterQAria'))}">
       </div>
       ${hideTheme ? '' : hidden('theme', filters.theme)}
-      <label class="select"><span class="sr-only">Jahrzehnt</span>
+      <label class="select"><span class="sr-only">${esc(t('decade'))}</span>
         <select name="decade" data-autosubmit>
-          <option value="">Alle Jahrzehnte</option>
-          ${DECADES.map((d) => `<option value="${d}" ${filters.decade === d ? 'selected' : ''}>${d}er</option>`).join('')}
+          <option value="">${esc(t('allDecades'))}</option>
+          ${DECADES.map((d) => `<option value="${d}" ${filters.decade === d ? 'selected' : ''}>${esc(t('decadeLabel', { d }))}</option>`).join('')}
         </select>
       </label>
-      <label class="select"><span class="sr-only">Sortierung</span>
+      <label class="select"><span class="sr-only">${esc(t('sort'))}</span>
         <select name="sort" data-autosubmit>
-          ${Object.entries(data.SORTS).map(([key, def]) => `<option value="${key}" ${filters.sort === key ? 'selected' : ''}>${esc(def.label)}</option>`).join('')}
+          ${Object.keys(data.SORTS).map((key) => `<option value="${key}" ${filters.sort === key ? 'selected' : ''}>${esc(t(SORT_KEYS[key]))}</option>`).join('')}
         </select>
       </label>
-      ${loggedIn ? `<label class="select"><span class="sr-only">Mein Status</span>
+      ${loggedIn ? `<label class="select"><span class="sr-only">${esc(t('statusAria'))}</span>
         <select name="status" data-autosubmit>
-          <option value="">Alle Sets</option>
-          <option value="fehlt" ${filters.status === 'fehlt' ? 'selected' : ''}>Fehlt mir noch</option>
-          <option value="besitze" ${filters.status === 'besitze' ? 'selected' : ''}>Hab ich</option>
-          <option value="wunsch" ${filters.status === 'wunsch' ? 'selected' : ''}>Auf der Wunschliste</option>
+          <option value="">${esc(t('statusAll'))}</option>
+          <option value="fehlt" ${filters.status === 'fehlt' ? 'selected' : ''}>${esc(t('statusMissing'))}</option>
+          <option value="besitze" ${filters.status === 'besitze' ? 'selected' : ''}>${esc(t('statusOwned'))}</option>
+          <option value="wunsch" ${filters.status === 'wunsch' ? 'selected' : ''}>${esc(t('statusWish'))}</option>
         </select></label>` : ''}
-      <label class="toggle"><input type="checkbox" name="foto" value="1" ${filters.photo ? 'checked' : ''} data-autosubmit><span>Nur mit Foto</span></label>
-      <button class="btn btn-dark" type="submit">Anwenden</button>
+      <label class="toggle"><input type="checkbox" name="foto" value="1" ${filters.photo ? 'checked' : ''} data-autosubmit><span>${esc(t('onlyPhoto'))}</span></label>
+      <button class="btn btn-dark" type="submit">${esc(t('apply'))}</button>
     </form>`;
   }
 
-  function renderActiveFilters(filters, themes, basePath, fixedTheme) {
+  function renderActiveFilters(filters, themes, basePath, fixedTheme, L) {
+    const t = L.t;
     const pills = [];
     const base = paramsFromFilters(filters);
     const without = (key) => {
@@ -283,86 +302,79 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
     };
     if (filters.q) pills.push(`<a class="pill" href="${without('q')}">„${esc(filters.q)}“ ${icon('x', 14)}</a>`);
     if (filters.theme && !fixedTheme) {
-      const t = themes.find((row) => publicThemeSlug(row.slug) === filters.theme || row.slug === filters.theme);
-      pills.push(`<a class="pill" href="${without('theme')}">${esc(t ? publicThemeName(t.name, t.slug) : filters.theme)} ${icon('x', 14)}</a>`);
+      const th = themes.find((row) => row.public_slug === filters.theme || row.slug === filters.theme);
+      pills.push(`<a class="pill" href="${without('theme')}">${esc(th ? th.public_name : filters.theme)} ${icon('x', 14)}</a>`);
     }
-    if (filters.decade) pills.push(`<a class="pill" href="${without('decade')}">${filters.decade}er ${icon('x', 14)}</a>`);
-    if (filters.photo) pills.push(`<a class="pill" href="${without('foto')}">Mit Foto ${icon('x', 14)}</a>`);
-    if (filters.status) pills.push(`<a class="pill" href="${without('status')}">${{ fehlt: 'Fehlt mir noch', besitze: 'Hab ich', wunsch: 'Wunschliste' }[filters.status]} ${icon('x', 14)}</a>`);
-    return pills.length ? `<div class="pill-row">${pills.join('')}<a class="link-arrow link-small" href="${basePath}">Alles zurücksetzen</a></div>` : '';
+    if (filters.decade) pills.push(`<a class="pill" href="${without('decade')}">${esc(t('decadeLabel', { d: filters.decade }))} ${icon('x', 14)}</a>`);
+    if (filters.photo) pills.push(`<a class="pill" href="${without('foto')}">${esc(t('withPhoto'))} ${icon('x', 14)}</a>`);
+    if (filters.status) pills.push(`<a class="pill" href="${without('status')}">${esc({ fehlt: t('statusMissing'), besitze: t('statusOwned'), wunsch: t('statusWish') }[filters.status])} ${icon('x', 14)}</a>`);
+    return pills.length ? `<div class="pill-row">${pills.join('')}<a class="link-arrow link-small" href="${basePath}">${esc(t('resetAll'))}</a></div>` : '';
   }
+
+  const hasAnyFilter = (f) => Boolean(f.q || f.theme || f.decade || f.photo || f.status);
 
   app.get('/entdecken', async (req, res, next) => {
     try {
-      const rawFilters = req.query;
-      const { result, states } = await renderResults(req, res, { rawFilters, basePath: '/entdecken' });
-      const baseParams = paramsFromFilters(result.filters);
-
+      const L = req.L;
+      const t = L.t;
+      const { result, states } = await runPage(req, req.query);
       if (req.query.partial === '1') {
-        res.json({
-          html: result.sets.map((set) => renderSetCard(set, states.get(String(set.id)))).join(''),
-          nextPage: result.filters.page < result.totalPages ? result.filters.page + 1 : 0,
-          remaining: Math.max(0, result.total - result.filters.page * result.pageSize),
-        });
+        res.json(partialJson(result, states, L));
         return;
       }
-
-      const themes = await data.getThemeStats(pool);
+      const baseParams = paramsFromFilters(result.filters);
+      const themes = await data.getThemeStats(pool, req.locale);
       const themeChips = themes.slice(0, 14);
-      const activeTheme = result.filters.theme;
-      if (activeTheme && !themeChips.some((t) => publicThemeSlug(t.slug) === activeTheme)) {
-        const extra = themes.find((t) => publicThemeSlug(t.slug) === activeTheme);
+      const f = result.filters;
+      const activeTheme = f.theme;
+      if (activeTheme && !themeChips.some((th) => th.public_slug === activeTheme || th.slug === activeTheme)) {
+        const extra = themes.find((th) => th.public_slug === activeTheme || th.slug === activeTheme);
         if (extra) themeChips.push(extra);
       }
-      const chipHref = (slug) => discoverUrl({ ...baseParams, theme: slug, page: '' });
-      const f = result.filters;
-      const searchTitle = f.q ? `„${f.q}“ – ${formatNumber(result.total)} Sets` : 'Playmobil-Sets entdecken';
+      const isActiveChip = (th) => activeTheme === th.public_slug || activeTheme === th.slug;
+      const filtered = hasAnyFilter(f) || f.sort !== 'empfohlen' || f.page > 1;
       const body = `
         ${renderPageHead({
-          eyebrow: 'Katalog',
-          title: 'Sets entdecken',
-          text: `${formatNumber(result.total)} ${result.total === 1 ? 'Set' : 'Sets'}${hasAnyFilter(f) ? ' passen zu deinen Filtern' : ' aus allen Jahrzehnten und Themenwelten'}. Mit einem Klick auf das Häkchen oder das Herz merkst du dir ein Set direkt.`,
-          actions: `<a class="btn btn-white" href="/zufall">${icon('shuffle', 18)} Zufallsfund</a><a class="btn btn-primary" href="/einpflegen">${icon('plus', 18)} Set einpflegen</a>`,
+          eyebrow: t('discEyebrow'),
+          title: t('discTitle'),
+          text: `${esc(hasAnyFilter(f) ? t('discLeadFiltered', { n: formatNumber(result.total), setWord: L.setWord(result.total) }) : t('discLeadAll', { n: formatNumber(result.total), setWord: L.setWord(result.total) }))} ${esc(t('discLeadTip'))}`,
+          actions: `<a class="btn btn-white" href="/zufall">${icon('shuffle', 18)} ${esc(t('random'))}</a><a class="btn btn-primary" href="/einpflegen">${icon('plus', 18)} ${esc(t('addSet'))}</a>`,
         })}
         <section class="section section-tight">
           <div class="container">
-            ${renderFilterBar({ filters: f, themes, action: '/entdecken', loggedIn: Boolean(req.currentUser) })}
-            <div class="chip-scroller" role="list" aria-label="Themenwelten">
-              <a class="chip-pick${!activeTheme ? ' is-active' : ''}" role="listitem" href="${discoverUrl({ ...baseParams, theme: '', page: '' })}">Alle</a>
-              ${themeChips.map((t) => `<a class="chip-pick${activeTheme === publicThemeSlug(t.slug) ? ' is-active' : ''}" role="listitem" style="--tc:${themeColor(t.slug)}" href="${chipHref(publicThemeSlug(t.slug))}">${esc(publicThemeName(t.name, t.slug))}<small>${formatNumber(t.set_count)}</small></a>`).join('')}
-              <a class="chip-pick chip-pick-more" role="listitem" href="/themenwelten">Alle Themenwelten</a>
+            ${renderFilterBar({ filters: f, action: '/entdecken', loggedIn: Boolean(req.currentUser), L })}
+            <div class="chip-scroller" role="list" aria-label="${esc(t('themesEyebrow'))}">
+              <a class="chip-pick${!activeTheme ? ' is-active' : ''}" role="listitem" href="${discoverUrl({ ...baseParams, theme: '', page: '' })}">${esc(t('all'))}</a>
+              ${themeChips.map((th) => `<a class="chip-pick${isActiveChip(th) ? ' is-active' : ''}" role="listitem" style="--tc:${themeColor(th.slug)}" href="${discoverUrl({ ...baseParams, theme: th.public_slug, page: '' })}">${esc(th.public_name)}<small>${formatNumber(th.set_count)}</small></a>`).join('')}
+              <a class="chip-pick chip-pick-more" role="listitem" href="/themenwelten">${esc(t('allThemes'))}</a>
             </div>
-            ${renderActiveFilters(f, themes, '/entdecken', false)}
+            ${renderActiveFilters(f, themes, '/entdecken', false, L)}
             ${result.sets.length
-              ? `<div data-results>${renderSetGrid(result.sets, states)}</div>${renderLoadMore(result, baseParams, '/entdecken')}`
+              ? `<div data-results>${renderSetGrid(result.sets, states, L)}</div>${renderLoadMore(result, baseParams, '/entdecken', L)}`
               : renderEmpty({
-                title: 'Dazu haben wir noch nichts',
-                text: f.q ? `Für „${esc(f.q)}“ gibt es keinen Treffer. Fehlt das Set im Katalog? Dann leg es selbst an – dauert eine Minute.` : 'Mit diesen Filtern gibt es keine Treffer. Lockere die Filter ein wenig.',
-                actions: `${f.q ? `<a class="btn btn-primary" href="/einpflegen?q=${encodeURIComponent(f.q)}">Set neu anlegen</a>` : ''}<a class="btn btn-secondary" href="/entdecken">Filter zurücksetzen</a>`,
+                title: t('noHitTitle'),
+                text: f.q ? esc(t('noHitQ', { q: f.q })) : esc(t('noHitFilters')),
+                actions: `${f.q ? `<a class="btn btn-primary" href="/einpflegen?q=${encodeURIComponent(f.q)}">${esc(t('createSet'))}</a>` : ''}<a class="btn btn-secondary" href="/entdecken">${esc(t('reset'))}</a>`,
               })}
           </div>
         </section>`;
       res.send(layout({
-        title: `${searchTitle} – Playcollect`,
-        metaDescription: 'Playmobil-Katalog bei Playcollect: Sets nach Name, Setnummer, Themenwelt und Jahrzehnt finden und der eigenen Sammlung hinzufügen.',
+        title: `${f.q ? t('discTitleQ', { q: f.q, n: formatNumber(result.total) }) : t('discTitle')} – Playcollect`,
+        metaDescription: t('discMeta'),
         body,
         currentUser: req.currentUser,
         active: 'entdecken',
-        noindex: hasAnyFilter(f) && Boolean(f.q || f.status || f.photo || f.sort !== 'empfohlen'),
-        canonical: f.q || f.status || f.photo || f.decade || f.theme || f.page > 1 ? '' : '/entdecken',
+        L,
+        seo: i18n.buildSeo('discover', req.locale, { indexable: !filtered, includeAlternates: !filtered }),
       }));
     } catch (err) {
       next(err);
     }
   });
 
-  function hasAnyFilter(f) {
-    return Boolean(f.q || f.theme || f.decade || f.photo || f.status);
-  }
-
   // Bisherige Adressen bleiben erreichbar.
-  app.get('/katalog', (req, res) => res.redirect(301, discoverUrl({ sort: 'nummer', page: req.query.page && req.query.page !== '1' ? req.query.page : '' })));
-  app.get('/search', (req, res) => res.redirect(301, discoverUrl({ q: req.query.q, theme: req.query.theme })));
+  app.get('/katalog', (req, res) => res.redirect(301, req.L.route('discover', {}, { sort: 'nummer', page: req.query.page && req.query.page !== '1' ? req.query.page : '' })));
+  app.get('/search', (req, res) => res.redirect(301, req.L.route('discover', {}, { q: req.query.q, theme: req.query.theme })));
 
   // ------------------------------------------------------------ Zufall
   app.get('/zufall', async (req, res, next) => {
@@ -372,9 +384,9 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
         FROM catalog_sets s
         WHERE EXISTS (SELECT 1 FROM catalog_set_images i WHERE i.set_id = s.id)
         ORDER BY RANDOM() LIMIT 1`);
-      if (!pick.rowCount) return res.redirect('/entdecken');
+      if (!pick.rowCount) return res.redirect(req.L.route('discover'));
       res.set('Cache-Control', 'no-store');
-      res.redirect(`${setDetailUrl(pick.rows[0].set_number)}?zufall=1`);
+      res.redirect(`${req.L.route('setDetail', { setNumber: pick.rows[0].set_number })}?zufall=1`);
     } catch (err) {
       next(err);
     }
@@ -383,13 +395,14 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
   // ------------------------------------------------------------ Suche (live)
   app.get('/api/suggest', async (req, res, next) => {
     try {
+      const locale = i18n.normalizeLocale(req.query.lang);
       const q = String(req.query.q || '').trim().slice(0, 60);
       if (q.length < 2) return res.json({ ok: true, items: [] });
       const params = [];
       const where = [];
       for (const token of q.split(/\s+/).filter(Boolean).slice(0, 5)) {
         params.push(`%${data.likeEscape(token)}%`);
-        where.push(`(s.name ILIKE $${params.length} OR s.set_number ILIKE $${params.length})`);
+        where.push(`(s.name ILIKE $${params.length} OR s.set_number ILIKE $${params.length} OR EXISTS (SELECT 1 FROM catalog_set_translations x WHERE x.set_id = s.id AND x.name ILIKE $${params.length}))`);
       }
       params.push(q);
       const qParam = params.length;
@@ -402,7 +415,7 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
                  (COALESCE(img.local_image_path, img.image_url, '') = '') ASC,
                  COALESCE(s.release_year, 0) DESC
         LIMIT 8`;
-      const rows = (await pool.query(sql, params)).rows;
+      const rows = await data.localizeSetRows(pool, (await pool.query(sql, params)).rows, locale);
       const states = await data.getUserSetStates(pool, req.currentUser?.id || null, rows.map((r) => r.id));
       res.set('Cache-Control', 'no-store');
       res.json({
@@ -413,10 +426,10 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
             number: r.set_number,
             name: r.name,
             year: r.release_year,
-            theme: r.theme_name ? publicThemeName(r.theme_name, r.theme_slug) : '',
+            theme: r.theme_public_name || '',
             color: themeColor(r.theme_slug || r.set_number),
             image: getCatalogImageUrl(r.primary_image_url),
-            url: setDetailUrl(r.set_number),
+            url: i18n.localizePublicPath(setDetailUrl(r.set_number), locale),
             owned: state.owned,
             wishlist: state.wishlist,
           };
@@ -430,27 +443,31 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
   // ------------------------------------------------------------ Themenwelten
   app.get('/themenwelten', async (req, res, next) => {
     try {
-      const themes = await data.getThemeStats(pool);
-      const covers = await data.getThemeCovers(pool, themes.map((t) => t.slug));
+      const L = req.L;
+      const t = L.t;
+      const themes = await data.getThemeStats(pool, req.locale);
+      const covers = await data.getThemeCovers(pool, themes.map((x) => x.slug));
       const totalSets = themes.reduce((sum, row) => sum + Number(row.set_count || 0), 0);
       const body = `
         ${renderPageHead({
-          eyebrow: 'Themenwelten',
-          title: 'Alle Themenwelten',
-          text: `${formatNumber(themes.length)} Themenwelten mit zusammen ${formatNumber(totalSets)} Sets. Such dir eine Welt aus und stöbere los.`,
-          actions: '<a class="btn btn-primary" href="/entdecken">Alle Sets durchsuchen</a><a class="btn btn-white" href="/zufall">Zufallsfund</a>',
+          eyebrow: t('themesPageEyebrow'),
+          title: t('themesPageTitle'),
+          text: esc(t('themesPageLead', { t: formatNumber(themes.length), s: formatNumber(totalSets) })),
+          actions: `<a class="btn btn-primary" href="/entdecken">${esc(t('searchAllSets'))}</a><a class="btn btn-white" href="/zufall">${esc(t('random'))}</a>`,
         })}
         <section class="section section-tight">
           <div class="container tile-grid tile-grid-all">
-            ${themes.map((t) => renderThemeTile(t, covers.get(t.slug) || [])).join('')}
+            ${themes.map((th) => renderThemeTile(th, covers.get(th.slug) || [], L)).join('')}
           </div>
         </section>`;
       res.send(layout({
-        title: 'Themenwelten – Playcollect',
-        metaDescription: `Alle ${themes.length} Playmobil-Themenwelten im Überblick: von Ritter und Piraten bis City Life – mit allen hinterlegten Sets.`,
+        title: t('themesPageHtmlTitle'),
+        metaDescription: t('themesPageMeta', { n: themes.length }),
         body,
         currentUser: req.currentUser,
         active: 'themen',
+        L,
+        seo: i18n.buildSeo('themes', req.locale),
       }));
     } catch (err) {
       next(err);
@@ -459,82 +476,82 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
 
   app.get('/themenwelten/:slug', async (req, res, next) => {
     try {
-      const slug = String(req.params.slug || '').trim().toLowerCase();
-      const dbSlug = slug === 'sonstige' ? 'unbekannt' : slug;
-      const themes = await data.getThemeStats(pool);
-      const theme = themes.find((t) => t.slug === dbSlug);
+      const L = req.L;
+      const t = L.t;
+      const theme = await data.resolveThemeByPublicSlug(pool, req.params.slug, req.locale);
       if (!theme) {
         res.status(404).send(layout({
-          title: 'Themenwelt nicht gefunden – Playcollect',
+          title: `${t('themeNotFound')} – Playcollect`,
           currentUser: req.currentUser,
-          noindex: true,
+          L,
+          seo: { canonical: '', robots: 'noindex,follow', alternates: [] },
           body: `<section class="section"><div class="container">${renderEmpty({
-            title: 'Themenwelt nicht gefunden',
-            text: 'Für diese Themenwelt gibt es keinen Eintrag.',
-            actions: '<a class="btn btn-primary" href="/themenwelten">Alle Themenwelten</a>',
+            title: t('themeNotFound'),
+            text: esc(t('themeNotFoundText')),
+            actions: `<a class="btn btn-primary" href="/themenwelten">${esc(t('allThemes'))}</a>`,
           })}</div></section>`,
         }));
         return;
       }
-      const publicSlug = publicThemeSlug(theme.slug);
-      const view = { ...theme, slug: publicSlug, name: publicThemeName(theme.name, theme.slug) };
-      const content = buildThemePageContent(view, { setCount: theme.set_count, yearCount: theme.year_count });
-      const { result, states } = await renderResults(req, res, { rawFilters: { ...req.query, theme: slug }, basePath: themeUrl(theme.slug) });
-      const baseParams = { ...paramsFromFilters(result.filters), theme: undefined };
-      const basePath = themeUrl(theme.slug);
-
+      const basePath = themeUrl(theme.public_slug);
+      const { result, states } = await runPage(req, { ...req.query, theme: theme.slug === 'unbekannt' ? 'sonstige' : theme.slug });
       if (req.query.partial === '1') {
-        res.json({
-          html: result.sets.map((set) => renderSetCard(set, states.get(String(set.id)))).join(''),
-          nextPage: result.filters.page < result.totalPages ? result.filters.page + 1 : 0,
-          remaining: Math.max(0, result.total - result.filters.page * result.pageSize),
-        });
+        res.json(partialJson(result, states, L));
         return;
       }
-
+      const content = buildThemePageContent(theme, L);
+      const baseParams = { ...paramsFromFilters(result.filters), theme: undefined };
       const color = themeColor(theme.slug);
       const covers = (await data.getThemeCovers(pool, [theme.slug])).get(theme.slug) || [];
       const f = result.filters;
       const filtered = Boolean(f.q || f.decade || f.photo || f.status);
+      const slugsByLocale = await data.getThemeSlugsByLocale(pool, theme.id, theme.slug);
       const body = `
         ${renderPageHead({
           eyebrow: content.eyebrow,
-          title: view.name,
+          title: theme.public_name,
           text: esc(content.intro),
           color,
-          actions: `<a class="btn btn-white" href="/themenwelten">${icon('arrowLeft', 18)} Alle Themenwelten</a><a class="btn btn-primary" href="/einpflegen">${icon('plus', 18)} Set einpflegen</a>`,
+          actions: `<a class="btn btn-white" href="/themenwelten">${icon('arrowLeft', 18)} ${esc(t('allThemes'))}</a><a class="btn btn-primary" href="/einpflegen">${icon('plus', 18)} ${esc(t('addSet'))}</a>`,
           aside: `<div class="theme-aside">
               <div class="theme-aside-art" aria-hidden="true">${covers.slice(0, 3).map((url, idx) => `<img class="tile-pic tile-pic-${idx + 1}" src="${esc(getCatalogImageUrl(url))}" alt="" decoding="async">`).join('')}</div>
               <ul class="theme-facts">
-                <li><strong>${formatNumber(theme.set_count)}</strong><span>Sets</span></li>
-                <li><strong>${formatNumber(theme.year_count)}</strong><span>Jahrgänge</span></li>
-                ${theme.first_year ? `<li><strong>${esc(theme.first_year)}–${esc(theme.last_year)}</strong><span>Zeitraum</span></li>` : ''}
+                <li><strong>${formatNumber(theme.set_count)}</strong><span>${esc(t('factSets'))}</span></li>
+                <li><strong>${formatNumber(theme.year_count)}</strong><span>${esc(t('factYears'))}</span></li>
+                ${theme.first_year ? `<li><strong>${esc(theme.first_year)}–${esc(theme.last_year)}</strong><span>${esc(t('factPeriod'))}</span></li>` : ''}
               </ul>
             </div>`,
         })}
         <section class="section section-tight">
           <div class="container">
             <div class="highlight-row">${content.highlights.map((item) => `<span class="chip chip-theme">${icon('check', 14)} ${esc(item)}</span>`).join('')}</div>
-            ${renderFilterBar({ filters: f, themes, action: basePath, hideTheme: true, loggedIn: Boolean(req.currentUser) })}
-            ${renderActiveFilters({ ...f, theme: '' }, themes, basePath, true)}
-            <p class="result-count">${formatNumber(result.total)} ${result.total === 1 ? 'Set' : 'Sets'}${filtered ? ' mit deinen Filtern' : ` in ${esc(view.name)}`}</p>
+            ${renderFilterBar({ filters: f, action: basePath, hideTheme: true, loggedIn: Boolean(req.currentUser), L })}
+            ${renderActiveFilters({ ...f, theme: '' }, [], basePath, true, L)}
+            <p class="result-count">${esc(filtered ? t('themeCountFiltered', { n: formatNumber(result.total), setWord: L.setWord(result.total) }) : t('themeCount', { n: formatNumber(result.total), setWord: L.setWord(result.total), name: theme.public_name }))}</p>
             ${result.sets.length
-              ? `<div data-results>${renderSetGrid(result.sets, states)}</div>${renderLoadMore(result, baseParams, basePath)}`
+              ? `<div data-results>${renderSetGrid(result.sets, states, L)}</div>${renderLoadMore(result, baseParams, basePath, L)}`
               : renderEmpty({
-                title: 'Keine Treffer',
-                text: `Mit diesen Filtern gibt es in ${esc(view.name)} keine Sets.`,
-                actions: `<a class="btn btn-secondary" href="${basePath}">Filter zurücksetzen</a>`,
+                title: t('noHits'),
+                text: esc(t('noHitsTheme', { name: theme.public_name })),
+                actions: `<a class="btn btn-secondary" href="${basePath}">${esc(t('reset'))}</a>`,
               })}
           </div>
         </section>`;
+      const clean = !filtered && f.sort === 'empfohlen' && f.page === 1;
       res.send(layout({
         title: content.seoTitle,
         metaDescription: content.seoDescription,
         body,
         currentUser: req.currentUser,
         active: 'themen',
-        noindex: filtered || f.sort !== 'empfohlen',
-        canonical: filtered ? basePath : '',
+        L,
+        seo: i18n.buildSeo('themeDetail', req.locale, {
+          params: { slug: slugsByLocale[req.locale] },
+          paramsByLocale: { de: { slug: slugsByLocale.de }, en: { slug: slugsByLocale.en }, fr: { slug: slugsByLocale.fr } },
+          indexable: clean,
+          indexableLocales: theme.locale_indexable ? [req.locale] : [],
+          includeAlternates: clean,
+        }),
       }));
     } catch (err) {
       next(err);
@@ -544,6 +561,8 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
   // ------------------------------------------------------------ Set-Detail
   app.get('/sets/:setNumber', async (req, res, next) => {
     try {
+      const L = req.L;
+      const t = L.t;
       const setNumber = String(req.params.setNumber || '').trim();
       const userId = req.currentUser?.id || null;
       const setRes = await pool.query(
@@ -561,19 +580,20 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
 
       if (!setRes.rowCount) {
         res.status(404).send(layout({
-          title: 'Set nicht gefunden – Playcollect',
+          title: `${t('setNotFound', { num: setNumber })} – Playcollect`,
           currentUser: req.currentUser,
-          noindex: true,
+          L,
+          seo: { canonical: '', robots: 'noindex,follow', alternates: [] },
           body: `<section class="section"><div class="container">${renderEmpty({
-            title: `Set ${esc(setNumber)} ist noch nicht im Katalog`,
-            text: 'Du kennst das Set? Dann leg es an und hilf allen Sammlern.',
-            actions: `<a class="btn btn-primary" href="/einpflegen?q=${encodeURIComponent(setNumber)}">Set neu anlegen</a><a class="btn btn-secondary" href="/entdecken">Katalog durchsuchen</a>`,
+            title: esc(t('setNotFound', { num: setNumber })),
+            text: esc(t('setNotFoundText')),
+            actions: `<a class="btn btn-primary" href="/einpflegen?q=${encodeURIComponent(setNumber)}">${esc(t('createSet'))}</a><a class="btn btn-secondary" href="/entdecken">${esc(t('browse'))}</a>`,
           })}</div></section>`,
         }));
         return;
       }
 
-      const set = setRes.rows[0];
+      const [set] = await data.localizeSetRows(pool, setRes.rows, req.locale);
       const [imagesRes, relatedRes, stateRes, neighborRes] = await Promise.all([
         pool.query(
           `SELECT COALESCE(local_image_path, image_url) AS image_url, alt_text, image_kind, is_primary
@@ -591,7 +611,7 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
         ),
         userId
           ? pool.query(
-              `SELECT i.id AS item_id, c.collection_type, i.quantity, i.item_condition, i.purchase_price_cents
+              `SELECT i.id AS item_id, c.collection_type, i.quantity
                FROM user_collection_items i JOIN user_collections c ON c.id = i.collection_id
                WHERE c.user_id = $1 AND i.set_id = $2 AND c.collection_type IN ('owned', 'wishlist')`,
               [userId, set.id]
@@ -604,6 +624,7 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
           [set.theme_id, set.id]
         ),
       ]);
+      const related = await data.localizeSetRows(pool, relatedRes.rows, req.locale);
 
       const images = imagesRes.rows.filter((img) => img.image_url);
       const metadata = parseMetadata(set.metadata);
@@ -614,21 +635,21 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
       const owned = stateRes.rows.find((r) => r.collection_type === 'owned');
       const wished = stateRes.rows.find((r) => r.collection_type === 'wishlist');
       const color = themeColor(set.theme_slug || set.theme_name || set.set_number);
-      const themeLabel = set.theme_name ? publicThemeName(set.theme_name, set.theme_slug) : (set.category_label || 'Playmobil');
-      const relatedStates = await data.getUserSetStates(pool, userId, relatedRes.rows.map((s) => s.id));
+      const themeLabel = set.theme_public_name || set.category_label || 'Playmobil';
+      const relatedStates = await data.getUserSetStates(pool, userId, related.map((s) => s.id));
       const primary = images[0];
-      const nextUrl = encodeURIComponent(setDetailUrl(set.set_number));
+      const nextUrl = encodeURIComponent(L.link(setDetailUrl(set.set_number)));
       const hasImages = images.length > 0 && views.SHOW_CATALOG_IMAGES;
 
       const facts = [
-        ['Setnummer', set.set_number],
-        set.release_year ? ['Erschienen', set.release_year + (set.retire_year ? `–${set.retire_year}` : '')] : null,
-        ['Themenwelt', themeLabel],
-        set.piece_count ? ['Teile', formatNumber(set.piece_count)] : null,
-        set.figure_count ? ['Figuren', formatNumber(set.figure_count)] : null,
-        set.age_min ? ['Ab Alter', `${set.age_min} Jahren`] : null,
-        introPrice !== null ? ['Einführungspreis', formatMoneyFromCents(introPrice)] : null,
-        marketValue !== null ? ['Marktwert', formatMoneyFromCents(marketValue)] : null,
+        [t('factNumber'), set.set_number],
+        set.release_year ? [t('factReleased'), set.release_year + (set.retire_year ? `–${set.retire_year}` : '')] : null,
+        [t('factTheme'), themeLabel],
+        set.piece_count ? [t('factPieces'), formatNumber(set.piece_count)] : null,
+        set.figure_count ? [t('factFigures'), formatNumber(set.figure_count)] : null,
+        set.age_min ? [t('factAge'), t('factAgeVal', { n: set.age_min })] : null,
+        introPrice !== null ? [t('factIntro'), formatMoneyFromCents(introPrice)] : null,
+        marketValue !== null ? [t('factMarket'), formatMoneyFromCents(marketValue)] : null,
       ].filter(Boolean);
 
       const actionPanel = req.currentUser
@@ -636,25 +657,25 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
             <div class="action-row">
               <div class="action-own${owned ? ' is-on' : ''}" data-own-box>
                 <button class="btn btn-own btn-lg" type="button" data-collect data-set="${esc(set.set_number)}" data-list="owned" data-mode="detail">
-                  ${icon('check', 22)} <span data-own-label>${owned ? 'In meiner Sammlung' : 'Hab ich!'}</span>
+                  ${icon('check', 22)} <span data-own-label>${esc(owned ? t('inCollection') : t('ownIt'))}</span>
                 </button>
                 <div class="stepper" data-stepper ${owned ? '' : 'hidden'}>
-                  <button type="button" data-step="-1" aria-label="Eine weniger">${icon('minus', 16)}</button>
+                  <button type="button" data-step="-1" aria-label="${esc(t('lessOne'))}">${icon('minus', 16)}</button>
                   <output data-qty>${owned ? esc(owned.quantity) : 1}</output><span class="stepper-x">×</span>
-                  <button type="button" data-step="1" aria-label="Eine mehr">${icon('plus', 16)}</button>
+                  <button type="button" data-step="1" aria-label="${esc(t('moreOne'))}">${icon('plus', 16)}</button>
                 </div>
               </div>
               <button class="btn btn-wish btn-lg${wished ? ' is-on' : ''}" type="button" data-collect data-set="${esc(set.set_number)}" data-list="wishlist" data-mode="detail" aria-pressed="${wished ? 'true' : 'false'}">
-                ${icon('heart', 22)} <span data-wish-label>${wished ? 'Auf der Wunschliste' : 'Wunschliste'}</span>
+                ${icon('heart', 22)} <span data-wish-label>${esc(wished ? t('onWishlist') : t('wishlist'))}</span>
               </button>
             </div>
-            ${owned ? `<p class="action-hint" data-own-hint>${icon('edit', 14)} <a href="/konto/sammlung?q=${encodeURIComponent(set.set_number)}">Zustand, Preis und Notizen eintragen</a></p>` : '<p class="action-hint" data-own-hint hidden></p>'}
+            ${owned ? `<p class="action-hint" data-own-hint>${icon('edit', 14)} <a href="/konto/sammlung?q=${encodeURIComponent(set.set_number)}">${esc(t('editDetails'))}</a></p>` : '<p class="action-hint" data-own-hint hidden></p>'}
           </div>`
         : `<div class="action-panel action-panel-guest">
-            <p><strong>Hast du dieses Set?</strong> Registriere dich kostenlos und trag es mit einem Klick in deine Sammlung ein.</p>
+            <p><strong>${esc(t('guestAsk'))}</strong> ${esc(t('guestText'))}</p>
             <div class="btn-row">
-              <a class="btn btn-primary btn-lg" href="/register?next=${nextUrl}">Kostenlos registrieren</a>
-              <a class="btn btn-secondary btn-lg" href="/login?next=${nextUrl}">Einloggen</a>
+              <a class="btn btn-primary btn-lg" href="/register?next=${nextUrl}">${esc(t('register'))}</a>
+              <a class="btn btn-secondary btn-lg" href="/login?next=${nextUrl}">${esc(t('loginBtn'))}</a>
             </div>
           </div>`;
 
@@ -665,7 +686,7 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
             </div>
             ${images.length > 1 ? `<div class="gallery-thumbs">
               ${images.map((image, index) => `
-                <button type="button" class="gallery-thumb${index === 0 ? ' is-active' : ''}" data-detail-thumb data-fullsrc="${esc(image.image_url)}" data-alt="${esc(image.alt_text || set.name)}" aria-label="${esc(imageKindLabel(image.image_kind))} anzeigen">
+                <button type="button" class="gallery-thumb${index === 0 ? ' is-active' : ''}" data-detail-thumb data-fullsrc="${esc(image.image_url)}" data-alt="${esc(image.alt_text || set.name)}" aria-label="${esc(imageKindLabel(image.image_kind))}">
                   <img src="${esc(image.image_url)}" alt="" loading="lazy" decoding="async">
                 </button>`).join('')}
             </div>` : ''}
@@ -676,55 +697,57 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
             </div>
             ${req.currentUser && views.SHOW_CATALOG_IMAGES
               ? `<div class="photo-upload" data-photo-upload data-set="${esc(set.set_number)}">
-                  <p><strong>Noch kein Foto.</strong> Hast du das Set? Lade ein Bild hoch.</p>
-                  <label class="btn btn-secondary">${icon('camera', 18)} Foto hochladen<input type="file" accept="image/jpeg,image/png,image/webp" hidden data-photo-input></label>
+                  <p><strong>${esc(t('noPhoto'))}</strong> ${esc(t('noPhotoText'))}</p>
+                  <label class="btn btn-secondary">${icon('camera', 18)} ${esc(t('uploadPhoto'))}<input type="file" accept="image/jpeg,image/png,image/webp" hidden data-photo-input></label>
                   <p class="field-hint" data-photo-status></p>
                 </div>`
               : ''}
           </div>`;
 
       const description = set.description || '';
-      const metaDescription = (description || `${set.name} (Set ${set.set_number}) aus der Playmobil-Themenwelt ${themeLabel}${set.release_year ? `, erschienen ${set.release_year}` : ''}. Jetzt bei Playcollect ansehen und der Sammlung hinzufügen.`).replace(/\s+/g, ' ').slice(0, 155);
+      const metaDescription = (set.meta_description || description || t('setMetaFallback', {
+        name: set.name, num: set.set_number, theme: themeLabel, year: set.release_year ? t('setMetaYear', { y: set.release_year }) : '',
+      })).replace(/\s+/g, ' ').slice(0, 155);
 
       const body = `
         <section class="detail" style="--tc:${color}">
           <div class="container">
-            <nav class="breadcrumbs" aria-label="Brotkrumen">
-              <a href="/entdecken">Katalog</a><i>›</i>${set.theme_name ? `<a href="${themeUrl(set.theme_slug)}">${esc(themeLabel)}</a><i>›</i>` : ''}<span>${esc(set.set_number)}</span>
+            <nav class="breadcrumbs" aria-label="${esc(t('breadcrumbAria'))}">
+              <a href="/entdecken">${esc(t('breadcrumbCatalog'))}</a><i>›</i>${set.theme_name ? `<a href="${themeUrl(set.theme_public_slug)}">${esc(themeLabel)}</a><i>›</i>` : ''}<span>${esc(set.set_number)}</span>
             </nav>
             <div class="detail-grid">
               ${gallery}
               <div class="detail-main">
                 <div class="detail-tags">
-                  <span class="chip chip-num">Set ${esc(set.set_number)}</span>
-                  ${set.theme_name ? `<a class="chip chip-theme" href="${themeUrl(set.theme_slug)}">${esc(themeLabel)}</a>` : ''}
+                  <span class="chip chip-num">${esc(t('set'))} ${esc(set.set_number)}</span>
+                  ${set.theme_name ? `<a class="chip chip-theme" href="${themeUrl(set.theme_public_slug)}">${esc(themeLabel)}</a>` : ''}
                   ${set.release_year ? `<a class="chip" href="${discoverUrl({ decade: set.release_year - (set.release_year % 10) })}">${esc(set.release_year)}</a>` : ''}
-                  ${metadata.user_submitted ? '<span class="chip chip-community">Von Sammlern ergänzt</span>' : ''}
+                  ${metadata.user_submitted ? `<span class="chip chip-community">${esc(t('communityLong'))}</span>` : ''}
                 </div>
                 <h1 class="detail-title">${esc(set.name)}</h1>
                 ${actionPanel}
-                <p class="detail-description">${description ? esc(description) : 'Für dieses Set gibt es noch keine Beschreibung.'}</p>
+                <p class="detail-description">${description ? esc(description) : esc(t('noDescription'))}</p>
                 <dl class="facts">
                   ${facts.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}
                 </dl>
                 <div class="btn-row detail-links">
-                  ${neighborRes.rows[0]?.prev_number ? `<a class="btn btn-secondary btn-sm" href="${setDetailUrl(neighborRes.rows[0].prev_number)}">${icon('arrowLeft', 16)} Vorheriges</a>` : ''}
-                  ${neighborRes.rows[0]?.next_number ? `<a class="btn btn-secondary btn-sm" href="${setDetailUrl(neighborRes.rows[0].next_number)}">Nächstes ${icon('arrow', 16)}</a>` : ''}
-                  <a class="btn btn-ghost btn-sm" href="/zufall">${icon('shuffle', 16)} Zufallsfund</a>
-                  ${sourceUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(sourceUrl)}" target="_blank" rel="nofollow noopener noreferrer">${icon('external', 16)} Originalquelle</a>` : ''}
+                  ${neighborRes.rows[0]?.prev_number ? `<a class="btn btn-secondary btn-sm" href="${setDetailUrl(neighborRes.rows[0].prev_number)}">${icon('arrowLeft', 16)} ${esc(t('prev'))}</a>` : ''}
+                  ${neighborRes.rows[0]?.next_number ? `<a class="btn btn-secondary btn-sm" href="${setDetailUrl(neighborRes.rows[0].next_number)}">${esc(t('next'))} ${icon('arrow', 16)}</a>` : ''}
+                  <a class="btn btn-ghost btn-sm" href="/zufall">${icon('shuffle', 16)} ${esc(t('random'))}</a>
+                  ${sourceUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(sourceUrl)}" target="_blank" rel="nofollow noopener noreferrer">${icon('external', 16)} ${esc(t('source'))}</a>` : ''}
                 </div>
-                ${breadcrumbTrail.length ? `<p class="muted small">Quelle: ${breadcrumbTrail.map(esc).join(' › ')}</p>` : ''}
+                ${breadcrumbTrail.length ? `<p class="muted small">${esc(t('sourceLabel'))}${breadcrumbTrail.map(esc).join(' › ')}</p>` : ''}
               </div>
             </div>
           </div>
         </section>
-        ${relatedRes.rowCount ? `
+        ${related.length ? `
         <section class="section section-tint">
           <div class="container section-head">
-            <div><span class="eyebrow">Mehr entdecken</span><h2>Mehr aus ${esc(themeLabel)}</h2></div>
-            ${set.theme_name ? `<a class="link-arrow" href="${themeUrl(set.theme_slug)}">Ganze Themenwelt ${icon('arrow', 18)}</a>` : ''}
+            <div><span class="eyebrow">${esc(t('moreEyebrow'))}</span><h2>${esc(t('moreFrom', { name: themeLabel }))}</h2></div>
+            ${set.theme_name ? `<a class="link-arrow" href="${themeUrl(set.theme_public_slug)}">${esc(t('wholeTheme'))} ${icon('arrow', 18)}</a>` : ''}
           </div>
-          <div class="container"><div class="rail" data-rail>${relatedRes.rows.map((s) => renderSetCard(s, relatedStates.get(String(s.id)))).join('')}</div></div>
+          <div class="container"><div class="rail" data-rail>${related.map((s) => renderSetCard(s, relatedStates.get(String(s.id)), L)).join('')}</div></div>
         </section>` : ''}`;
       res.send(layout({
         title: `${set.name} (${set.set_number}) – Playcollect`,
@@ -732,7 +755,12 @@ module.exports = function registerDiscoverRoutes({ app, pool, views }) {
         body,
         currentUser: req.currentUser,
         active: 'entdecken',
-        canonical: setDetailUrl(set.set_number),
+        L,
+        seo: i18n.buildSeo('setDetail', req.locale, {
+          params: { setNumber: set.set_number },
+          indexable: set.locale_indexable,
+          indexableLocales: set.locale_indexable ? [req.locale] : [],
+        }),
       }));
     } catch (err) {
       next(err);

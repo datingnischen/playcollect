@@ -4,7 +4,7 @@ const PAGE_SIZE = 48;
 
 // Kartenfelder eines Sets inkl. Primärbild. Ohne Bildanzahl, damit Listen schnell bleiben.
 const SET_CARD_SELECT = `
-  SELECT s.id, s.set_number, s.name, s.release_year,
+  SELECT s.id, s.set_number, s.name, s.release_year, s.theme_id,
          t.name AS theme_name, t.slug AS theme_slug,
          COALESCE(s.description, '') AS description,
          COALESCE(img.local_image_path, img.image_url, '') AS primary_image_url,
@@ -72,8 +72,9 @@ async function runDiscover(pool, rawFilters, userId = null) {
   }
 
   if (filters.theme) {
+    // Themenwelt per interner oder übersetzter (öffentlicher) Kennung
     params.push(filters.theme === 'sonstige' ? 'unbekannt' : filters.theme);
-    where.push(`t.slug = $${params.length}`);
+    where.push(`(t.slug = $${params.length} OR EXISTS (SELECT 1 FROM catalog_theme_translations ttf WHERE ttf.theme_id = t.id AND ttf.slug = $${params.length}))`);
   }
 
   if (filters.decade) {
@@ -138,26 +139,94 @@ async function getUserSetStates(pool, userId, setIds) {
   return result;
 }
 
-// Themenwelten mit Anzahl, kurz im Speicher gehalten.
-let themeCache = { at: 0, rows: [] };
-async function getThemeStats(pool) {
-  if (Date.now() - themeCache.at < 5 * 60 * 1000 && themeCache.rows.length) return themeCache.rows;
+// Themenwelten mit Anzahl und übersetzten Namen/Slugs, je Sprache kurz im Speicher gehalten.
+// slug/name = interne Werte, public_slug/public_name = Werte der Sprache (Rückfall: Deutsch, dann intern).
+const themeCache = new Map();
+async function getThemeStats(pool, locale = 'de') {
+  const loc = ['en', 'fr'].includes(locale) ? locale : 'de';
+  const cached = themeCache.get(loc);
+  if (cached && Date.now() - cached.at < 5 * 60 * 1000 && cached.rows.length) return cached.rows;
   const res = await pool.query(
-    `SELECT t.slug, t.name, COUNT(s.id)::int AS set_count,
+    `SELECT t.id, t.slug, t.name,
+            COALESCE(tt_req.name, tt_de.name, t.name) AS public_name,
+            COALESCE(tt_req.slug, tt_de.slug, CASE WHEN t.slug = 'unbekannt' THEN 'sonstige' ELSE t.slug END) AS public_slug,
+            COALESCE(tt_req.intro, tt_de.intro, '') AS intro,
+            COALESCE(tt_req.meta_description, tt_de.meta_description, '') AS meta_description,
+            CASE WHEN $1 = 'de' THEN TRUE ELSE COALESCE(tt_req.is_indexable, FALSE) END AS locale_indexable,
+            COUNT(s.id)::int AS set_count,
             COUNT(DISTINCT s.release_year)::int AS year_count,
             MIN(s.release_year) AS first_year, MAX(s.release_year) AS last_year
      FROM catalog_themes t
      JOIN catalog_sets s ON s.theme_id = t.id
-     GROUP BY t.id, t.slug, t.name
+     LEFT JOIN catalog_theme_translations tt_req ON tt_req.theme_id = t.id AND tt_req.locale = $1
+     LEFT JOIN catalog_theme_translations tt_de ON tt_de.theme_id = t.id AND tt_de.locale = 'de'
+     GROUP BY t.id, t.slug, t.name, tt_req.name, tt_de.name, tt_req.slug, tt_de.slug, tt_req.intro, tt_de.intro,
+              tt_req.meta_description, tt_de.meta_description, tt_req.is_indexable
      HAVING COUNT(s.id) > 0
-     ORDER BY COUNT(s.id) DESC, t.name ASC`
+     ORDER BY COUNT(s.id) DESC, t.name ASC`,
+    [loc]
   );
-  themeCache = { at: Date.now(), rows: res.rows };
+  themeCache.set(loc, { at: Date.now(), rows: res.rows });
   return res.rows;
 }
 
 function invalidateThemeCache() {
-  themeCache = { at: 0, rows: [] };
+  themeCache.clear();
+}
+
+// Öffentliche Kennung einer Sprache -> Themenzeile (oder interner Slug als Rückfall).
+async function resolveThemeByPublicSlug(pool, slug, locale = 'de') {
+  const themes = await getThemeStats(pool, locale);
+  const wanted = String(slug || '').toLowerCase();
+  return themes.find((t) => String(t.public_slug).toLowerCase() === wanted)
+    || themes.find((t) => t.slug === (wanted === 'sonstige' ? 'unbekannt' : wanted))
+    || null;
+}
+
+// Slugs eines Themas in allen Sprachen (für hreflang-Alternativen), Map(locale -> slug).
+async function getThemeSlugsByLocale(pool, themeId, internalSlug) {
+  const res = await pool.query(`SELECT locale, slug FROM catalog_theme_translations WHERE theme_id = $1`, [themeId]);
+  const fallback = internalSlug === 'unbekannt' ? 'sonstige' : internalSlug;
+  const map = new Map(res.rows.map((r) => [r.locale, r.slug]));
+  const de = map.get('de') || fallback;
+  return { de, en: map.get('en') || de, fr: map.get('fr') || de };
+}
+
+// Übersetzt Namen/Beschreibung der Sets und Themen für die Sprache; bei fehlender Übersetzung gilt Deutsch bzw. die Basisdaten.
+async function localizeSetRows(pool, rows, locale = 'de') {
+  const loc = ['en', 'fr'].includes(locale) ? locale : 'de';
+  if (!rows.length) return rows;
+  const setIds = [...new Set(rows.map((r) => Number(r.id)).filter(Number.isFinite))];
+  const [setRes, themes] = await Promise.all([
+    pool.query(
+      `SELECT s.id,
+              COALESCE(st_req.name, st_de.name, s.name) AS display_name,
+              COALESCE(st_req.description, st_de.description, s.description, '') AS display_description,
+              COALESCE(st_req.meta_description, st_de.meta_description, '') AS meta_description,
+              CASE WHEN $2 = 'de' THEN TRUE ELSE COALESCE(st_req.is_indexable, FALSE) END AS locale_indexable
+       FROM catalog_sets s
+       LEFT JOIN catalog_set_translations st_req ON st_req.set_id = s.id AND st_req.locale = $2
+       LEFT JOIN catalog_set_translations st_de ON st_de.set_id = s.id AND st_de.locale = 'de'
+       WHERE s.id = ANY($1::bigint[])`,
+      [setIds, loc]
+    ),
+    getThemeStats(pool, loc),
+  ]);
+  const bySet = new Map(setRes.rows.map((r) => [Number(r.id), r]));
+  const byTheme = new Map(themes.map((t) => [Number(t.id), t]));
+  return rows.map((row) => {
+    const tr = bySet.get(Number(row.id));
+    const th = row.theme_id ? byTheme.get(Number(row.theme_id)) : null;
+    return {
+      ...row,
+      name: tr?.display_name || row.name,
+      description: tr?.display_description ?? row.description,
+      meta_description: tr?.meta_description || '',
+      locale_indexable: tr ? tr.locale_indexable : true,
+      theme_public_slug: th?.public_slug || row.theme_slug,
+      theme_public_name: th?.public_name || row.theme_name,
+    };
+  });
 }
 
 // Je Themenwelt bis zu drei Titelbilder für die Kachel-Collage.
@@ -196,5 +265,8 @@ module.exports = {
   getUserSetStates,
   getThemeStats,
   invalidateThemeCache,
+  localizeSetRows,
+  resolveThemeByPublicSlug,
+  getThemeSlugsByLocale,
   getThemeCovers,
 };
