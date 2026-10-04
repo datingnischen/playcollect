@@ -58,7 +58,6 @@ app.use((req, res, next) => {
 });
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: '25mb' }));
-app.use('/static', express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 app.use(i18n.localeMiddleware);
 
 function parseCookies(cookieHeader = '') {
@@ -277,6 +276,9 @@ app.use((req, res, next) => {
     error: 'Bitte Oberfläche zuerst über den Testzugang freischalten.',
   }));
 });
+
+// Statische Dateien erst nach dem Testzugang, damit Katalogbilder geschützt sind.
+app.use('/static', express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
 // ---------------------------------------------------------------- Routen
 const ctx = {
